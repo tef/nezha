@@ -238,9 +238,14 @@ infix(conj,right,95) --> "&".
 infix(and,right,95) --> "and".
 infix(disj,right,96) --> "|".
 infix(or,right,96) --> "or".
+prefix(every,94) --> "every" ,ws.
+prefix(once,94) --> "once",ws.
+
 
 prefix(not,94) --> "not",ws.
 
+eval_call(E,Eo,call(once,T),A) :- !,eval(E,Eo,T,A),!.
+eval_call(E,Eo,call(every,X),Z) :- !,findall(A,eval(E,Eo,X,A),Z),!.
 eval_call(E,Eo,call(and,[X,Y]),Z) :-!, evalone(E,E1,X,_),!,eval(E1,Eo,Y,Z).
 eval_call(E,Eo,call(or,[X,Y]),Z) :- !,((evalone(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
 eval_call(E,E,call(not,X),[]) :- \+ eval(E,_,X,_), !.
@@ -255,6 +260,7 @@ eval_conj(E,Eo,[H|T],_,X) :-  eval(E,E1,H,O), eval_conj(E1,Eo,T,O,X).
 test(controlflow, O) :- (
     expect("1 | 2",[1,2]),
     expect("(1 | 2) and 3", [3]),
+    expect("every (1 | 2 | 3)", [[1,2,3]]),
     expect_fail("not 1") 
     ) -> O = pass; O = fail.
 
