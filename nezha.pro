@@ -1,5 +1,7 @@
 #!/usr/bin/swipl -q -t start_script -f 
 
+:- set_prolog_flag(double_quotes,string).
+
 % helper functions to run the interpreter
 % from shell
 
