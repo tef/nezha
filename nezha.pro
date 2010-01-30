@@ -10,7 +10,7 @@ start_script :-
     halt.
 
 % or running as a compiled binary
-% swipl --goal=start_compile --stand_alone=true -o cornelius -c cornelius.pro
+% swipl --goal=start_compile --stand_alone=true -o binary -c source.pro
 start_compile :-
     catch(main_compile,E,(print_message(error,E),fail)),
     halt.
@@ -23,6 +23,7 @@ clean_arguments([--|T],H,[H|T]).
 clean_arguments([H|T],_,O) :-
     clean_arguments(T,H,O).
 
+% pulling them together
 main_script :-
     current_prolog_flag(argv,X),
     clean_arguments(X,[],[_,File|_]),
@@ -55,6 +56,8 @@ read_file(I,Li,Lo) :-
         read_file(I,Li,L1)
     ).  
 
+% shorthand for exectute this string.
+
 exec(X,O) :- exec([],X,_,O). 
 % exec(+Environment, +Code, -EnvOut, Output)
 exec(Ei,X,E,O) :- ( 
@@ -69,73 +72,124 @@ exec(Ei,X,E,O) :- (
 
 %% parser
 
-% whitespace helpers
+% useful functions:
+% lookahead a token.
+lookahead(X),X --> X.
+
+% we define a simple parser based around
+% items, expressions and operators with a given weight 
+
+% common parse tokens.
+% whitespace helpers ws0 means specific whitespace, ws means any.
 ws0 --> [X], {code_type(X, white)}, ws.
 ws --> ws0.
 ws --> [].
 
+% hello cr lf.
 newline --> [10], linefeed. 
 linefeed --> [13]; [].
+
+
+% hookable part. use item(X) --> ... to define
+% new item rules. items are simple nodes that
+% do not have any child nodes in the ast.
 
 % items are a generic token.
 :- discontiguous item/3.
 item(_) --> {fail}.
 
-% containers
 
-lookahead(X),X --> X.
+% expressions
+% an expression has an output and a weight restriction.
+% i.e an exprn(A,100) can contain within it a lower weight
+% expression(B,80), but not the other way around.
+% this weight is used to control operator precedence
 
-%expressions
 :- discontiguous exprn/4.
-exprn(O,N1) --> prefix(Op, N),!, { N =< N1 }, exprn(R,N), !, build(Op,R,Z), follow(Z, O, N1).
+%an expression is simply an item, possibly with some things following it.
 exprn(O,N) --> item(L), !, follow(L,O,N).
 
-% every expression is ast-fragment then a follow. the fragment is passed
-% to follow, to check for infix stuff (that contains it)
-follow(L,O,N1) --> (postfix(Op,N) -> {N =< N1}), wbreak, !, build(Op,L,Z), follow(Z, O, N1).
+% an expression is a prefix token, at a lower weight, with a single expression
+% bound to it.
+exprn(O,N1) --> prefix(Op, N),!, { N =< N1 }, exprn(R,N), !, build(Op,R,Z), follow(Z, O, N1).
+
+% expressions can be followed by operators, i.e 4 then '+'
+% these rules check for trailing operators, and consume 
+% more expressions as necessary
+
+% postfix operators can follow an expression head, and can be followed
+follow(L,O,N1) --> (postfix(Op,N) -> {N =< N1}), !, build(Op,L,Z), follow(Z, O, N1).
+
+% infix expressions capture another expression to the right and can be followed.
 follow(L,O,N1) --> ws, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws, exprn(R,N),!, build(Op,L,R,Z), follow(Z, O, N1).
+
+% the expression might not have anything following it.
 follow(O,O,_) --> !.
 
+% right associative operators bind (a + b) + c
 assoc(right, A, B) :-  A =< B.
+% left associative operators bind a + (b + c) 
 assoc(left, A, B) :- A < B.
 
+% operators can be re-written before being inserted into the tree.
 build(C,R,call(C,R)) --> !.
 build(C,L,R,call(C,[L,R])) --> !.
 
+% operators are simply parse rules.
 :- discontiguous infix/5, prefix/4, postfix/4.
+% infix(name, assoc, bind) --> "token".
 infix(_,_,_) --> {fail}.
+% postfix(name, bind) --> "token".
 postfix(_,_) --> {fail}.
+% prefix(name, bind) --> "token".
 prefix(_,_) --> {fail}.
 
-%helpers
+% a top level expression starts at 100
 expr(L) --> ws,exprn(L,100).
-
+% to parse the dcg, parse(+String, -Structure).
 parse(X,S) :- phrase(expr(S),X),!. 
 
+% eval(+Environment,-Environment,+Code,-Output)
+:- discontiguous eval/4.
+
+% prevent unbound variables.
+eval(E,E,X,X) :- var(X),!, fail.
+
+% understand call operations.
 eval(E,Eo,call(H,T),O) :-  \+ var(H), 
     atom(H) -> (
         (builtin(H),!, eval(E,Eo,T,To), apply(H,To,O))
     );
     (!,eval(E,E1,H,Ho),\+H=Ho,eval(E1,Eo,call(Ho,T),O)).
 
+% evaluating a list
 eval(E,Eo,[H|T],[Ho|To]) :- !, eval(E,E1,H,Ho), eval(E1,Eo,T,To).
-eval(E,E,X,X) :- atomic(X),!.
-eval(E,E,X,X) :- var(X),!, fail.
+eval(E,E,[],[]) :- !.
 
+%% use builtin/1 to indicate a builtin operator
+%% and use apply(name,[args],output) to implement it.
+:- discontiguous builtin/1, apply/3.
 
 %% language defintion of numbers with addition
 
 % any digit (including underscores) is a valid token
+
 number(N) --> digit(D0), digits(D), { number_codes(N, [D0|D]) },!.
 digits([D|T]) --> ("_" -> !; []),digit(D), digits(T).
 digits(O) --> ".",digit(D0),!, {append(".",[D0|T],O)}, digits(T).
 digits([]) --> [].
 digit(D) --> [D], {code_type(D, digit)},!.
 
+% define a new leaf node in the ast.
 item(X) --> number(X).
 
-exprn(O,N1) --> "(" ,!, ws,  exprn(Op,100), ws, ")",!, follow(Op, O ,N1).
+% add parenthesis rule for an expression.
+item(X) --> "(" ,!, ws,  expr(X), ws, ")",!.
 
+% add evaluation rule for a number
+eval(E,E,X,X) :- number(X),!.
+
+% define arithmetic and comparison operators
 infix(le, right,60) --> ">=".
 infix(eq, right,60) --> "==".
 infix(unf, right,80) --> "=".
@@ -148,8 +202,6 @@ infix(mul,right,45) --> "*".
 infix(div,right,45) --> "/".
 prefix(neg,5) --> "-".
 
-:- discontiguous builtin/1, apply/3.
-
 builtin(add). apply(add,[X,Y],O) :-plus(X,Y,O),!.
 builtin(sub). apply(sub,[X,Y],O) :- O is X-Y,!.
 builtin(neg). apply(neg,[X],O) :- O is 0 - X,!.
@@ -160,4 +212,3 @@ builtin(le). apply(le,[X,Y],Y) :-  X =<Y,!.
 builtin(gt). apply(gt,[X,Y],Y) :-  X >Y,!.
 builtin(ge). apply(ge,[X,Y],Y) :-  X >=Y,!.
 builtin(number). apply(number,[X],Y) :-  cast_to_number(X,Y),!.
-
