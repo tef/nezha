@@ -1,6 +1,8 @@
 #!/usr/bin/swipl -q -t start_script -f 
 
-:- set_prolog_flag(double_quotes,string).
+% this breaks norgg's prolog
+
+%:- set_prolog_flag(double_quotes,string).
 
 % helper functions to run the interpreter
 % from shell
@@ -71,7 +73,7 @@ exec(Ei,X,E,O) :- (
         eval(Ei,E,S,O) *-> [] ;
         (write('Runtime Error'),nl,fail)
     ).
-exec_s(Ei,X,E,O) :- parse(X,S),!,eval(Ei,E,S,O).
+exec_s(X,O) :- parse(X,S),!,eval([],_,S,O).
 
 expect_fail(Code) :- findall(X,exec_s(Code,X),Output), \+ Output = []-> (writef('"%s" gave "%w" not failure\n',[Code, Output]), !, fail);[].
 expect_one(Code,O) :- expect(Code,[O]).
@@ -168,6 +170,7 @@ evalone(Ei,Eo,X,O) :- eval(Ei,Eo,X,O),!.
 
 % prevent unbound variables.
 eval(E,E,X,X) :- var(X),!, fail.
+eval(_,_,fail,_) :- !, fail.
 
 eval(E,Eo,call(H,T),O) :-  \+ var(H), 
     atom(H) -> (
@@ -232,6 +235,21 @@ test(numbers, O) :- ( expect("1 + 1",[2]),
     expect("(1 + 2) * 3", [9]) )
     -> O = pass; O = fail.
 
+%% builtins:
+
+identifier(A) -->  csym(C),csyms(N), {string_to_atom([C|N],A)},!. 
+csyms([H|T]) --> csym_(H), csyms(T).
+csyms([]) --> [].
+csym(C) --> [C], {code_type(C, csymf)}.
+csym_(C) --> [C], {code_type(C, csym)}.
+
+exprn(O,N1) --> identifier(X), !, idfollow(O,X,N1). 
+
+idfollow(O,X,N1) --> !,idbuild(X,Xo), follow(Xo, O, N1). 
+
+idbuild(fail,fail) --> !.
+
+
 %% flow control operators.
 
 infix(conj,right,95) --> "&". 
@@ -246,8 +264,8 @@ prefix(not,94) --> "not",ws.
 
 eval_call(E,Eo,call(once,T),A) :- !,eval(E,Eo,T,A),!.
 eval_call(E,Eo,call(every,X),Z) :- !,findall(A,eval(E,Eo,X,A),Z),!.
-eval_call(E,Eo,call(and,[X,Y]),Z) :-!, evalone(E,E1,X,_),!,eval(E1,Eo,Y,Z).
-eval_call(E,Eo,call(or,[X,Y]),Z) :- !,((evalone(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
+eval_call(E,Eo,call(and,[X,Y]),Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
+eval_call(E,Eo,call(or,[X,Y]),Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
 eval_call(E,E,call(not,X),[]) :- \+ eval(E,_,X,_), !.
 eval_call(_,_,call(disj,[]),_) :- !, fail.
 eval_call(E,Eo,call(disj,[H|T]),Z) :- !,(eval(E,E1,H,Z) ; !,eval(E1,Eo,call(disj,T),Z)).
@@ -261,13 +279,10 @@ test(controlflow, O) :- (
     expect("1 | 2",[1,2]),
     expect("(1 | 2) and 3", [3]),
     expect("every (1 | 2 | 3)", [[1,2,3]]),
-    expect_fail("not 1") 
-    ) -> O = pass; O = fail.
-
-
-
-
-
+    expect_fail("not 1"),
+    expect("(1 | 2) or 3", [1,2]),
+    expect("fail or 3 or 4", [3]), 
+    []) -> O = pass; O = fail.
 
 % test handler, last thing in the file.
 test(placeholder, O) :- (
@@ -279,7 +294,4 @@ test(placeholder, O) :- (
 test_out([]).
 test_out([[_,pass]|T]) :- test_out(T).
 test_out([[N,O]|T]) :- writef('%w %w\n',[O,N]), test_out(T).
-do :- findall([T,O],test(T,O), L),  test_out(L).
-
-
-
+:- findall([T,O],test(T,O), L),  test_out(L).
