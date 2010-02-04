@@ -203,7 +203,7 @@ infix(le, left,60) --> ">=".
 infix(eq, left,60) --> "==".
 infix(ge,left,60) --> "=<".
 infix(gt, left,60) --> ">".
-infix(lt,left,60) --> "<".
+infix(lt,left,60) --> "<", \+ "-".
 
 infix(add,left,50) --> "+".
 infix(sub,left,50) --> "-".
@@ -308,16 +308,25 @@ test(controlflow, O) :- (
 %% variables and assignment
 
 infix(assign,right,80) --> "=". 
+infix(backtrackassign,right,80) --> "<-". 
 
 eval_call(E,Eo,call(assign,[id(T),I]),O) :-
     !,
     eval(E,E1,I,O),
     env_set_var(E1,Eo,T,O).
 
+eval_call(E,Eo,call(backtrackassign,[id(T),I]),O) :-
+    !,
+    eval(E,E1,I,O),
+    env_bt_set_var(E1,Eo,T,O).
+
 eval(E,E,id(X),O) :-  env_get_var(E,X,O),!.
 
 env_set_var(E, Eo, N, O) :- 
     select(var(N,V),E,_) -> (E=Eo,nb_setarg(1,V,O),!); Eo=[var(N,v(O))|E].
+
+env_bt_set_var(E, Eo, N, O) :- 
+    select(var(N,V),E,_) -> (E=Eo,setarg(1,V,O),!); Eo=[var(N,v(O))|E].
 
 env_get_var(E, N, O) :-
     member(var(N,v(O)), E).
@@ -327,6 +336,7 @@ test(variables, O) :- (
     expect("x = 1 and y = x and y",[1]),
     expect("x = (1 | 2 | 3) & x = x + 1",[2,3,4]),
     expect("x = 0 and y = (1 | 2 | 3) & x = x + y",[1,3,6]),
+    expect("x = 0 and y = (1 | 2 | 3) & x <- x + y",[1,2,3]),
 
     []) -> O = pass; O = fail.
 
