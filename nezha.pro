@@ -125,9 +125,9 @@ follow(L,O,N1) --> ws0, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws0, exprn(R,N)
 % the expression might not have anything following it.
 follow(O,O,_) --> !.
 
-% right associative operators bind (a + b) + c
+% right associative operators bind a + (b + c) 
 assoc(right, A, B) :-  A =< B.
-% left associative operators bind a + (b + c) 
+% left associative operators bind (a + b) + c
 assoc(left, A, B) :- A < B.
 
 % operators can be re-written before being inserted into the tree.
@@ -197,16 +197,15 @@ item(X) --> "(" ,!, ws0,  expr(X), ws0, ")",!.
 eval(E,E,X,X) :- number(X),!.
 
 % define arithmetic and comparison operators
-infix(le, right,60) --> ">=".
-infix(eq, right,60) --> "==".
-infix(unf, right,80) --> "=".
-infix(ge,right,60) --> "=<".
-infix(gt,right,60) --> ">".
-infix(lt,right,60) --> "<".
-infix(add,right,50) --> "+".
-infix(sub,right,50) --> "-".
-infix(mul,right,45) --> "*".
-infix(div,right,45) --> "/".
+infix(le, left,60) --> ">=".
+infix(eq, left,60) --> "==".
+infix(ge,left,60) --> "=<".
+infix(gt, left,60) --> ">".
+infix(lt,left,60) --> "<".
+infix(add,left,50) --> "+".
+infix(sub,left,50) --> "-".
+infix(mul,left,45) --> "*".
+infix(div,left,45) --> "/".
 prefix(neg,5) --> "-".
 
 builtin(add). apply(add,[X,Y],O) :-plus(X,Y,O),!.
@@ -279,12 +278,36 @@ test(controlflow, O) :- (
     expect("fail or 3 or 4", [3]), 
     []) -> O = pass; O = fail.
 
-% test handler, last thing in the file.
+%% variables and assignment
+
+infix(assign,right,80) --> "=". 
+
+eval_call(E,Eo,call(assign,[id(T),I]),O) :-
+    !,
+    eval(E,E1,I,O),
+    env_set_var(E1,Eo,T,O).
+
+eval(E,E,id(X),O) :-  env_get_var(E,X,O),!.
+
+env_set_var(E, [var(N,O)|Eo], N, O) :- 
+    select(var(N,_),E,Eo) -> []; Eo=E.
+env_get_var(E, N, O) :-
+    member(var(N,O), E).
+
+test(variables, O) :- (
+    expect("x = 1 and x",[1]),
+    expect("x = 1 and y = x and y",[1]),
+    []) -> O = pass; O = fail.
+
+% fixme, handle backtracking properly
+
+%% new features go here.
+
+
+% placeholder test
 test(placeholder, O) :- (
     []
     ) -> O = pass; O = fail. 
-
-
 
 %% language engine starts here.
 
