@@ -1,6 +1,6 @@
 #!/usr/bin/swipl -q -t start_script -f 
 
-%% introduction
+%% introduction (then quickstart and outline of code) 
 
 % nezha aims to be a dynamic goal directed language for writing processes,
 % that talk to each other using pipes and signals, each having their own 
@@ -19,7 +19,7 @@
 % from prolog.craft import elegance, understanding 
 % from lua import metatables
 % from moose import roles
-% from erlang import process_supervision, processes
+% from erlang import supervision, processes
 
 % little languages should be embedded within the language, not buried in strings
 % languages need to grow, language extentions should be first class, and distinct from libraries
@@ -30,17 +30,21 @@
 % run it as ./nezha.pro which reads files from arguments or from stdin.
 % or (preferred) load it into a swi prolog interpeter.
 
+% tests are run every time this program is loaded or run.
+
 %% quick start for using swipl
 
 % $ swipl
 % ....
-% ?-        this is the prompt.
+% ?-    % this is the prompt.
 % ?- consult('nezha.pro').
-% this tells it to load the file
-% remember: 'foo' is an atom, "foo" is a string.
+% this tells it to load the file, use it again to reload, which will run tests
+
+% remember: in prolog, 'nezha.pro' is an atom, "foo" is a string.
 
 % then call exec("1 + ",X). 
-% the full stop is important.
+
+% the full stop is important. in prolog it terminates expressions.
 
 % ?- exec("1 | 2",X).
 % X = 1 ;
@@ -53,12 +57,8 @@
 % see the swiprolog manual for things like firing up your editor
 % or debugging commands.
 
-% to compile a prolog file
+% finally, to compile a prolog file
 % swipl --goal=start_compile --stand_alone=true -o binary -c source.pro
-
-%% settings
-% useful setting, but this breaks norgg's prolog
-%:- set_prolog_flag(double_quotes,string).
 
 %% outline of interpreter
 
@@ -70,6 +70,11 @@
     %% todo section and future work 
     %% engine, prolog main section, auxillary functions
     %% testrunner
+
+%% runtime settings
+% useful setting, but this breaks norgg's older swi prolog
+% :- set_prolog_flag(double_quotes,string).
+
 
 %% basic runtime skeleton
 
