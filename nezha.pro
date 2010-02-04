@@ -1,4 +1,6 @@
 #!/usr/bin/swipl -q -t start_script -f 
+% this allows us to run it as ./nezha.pro 
+% which reads files from arguments or from stdin.
 
 %% quick start:
 
@@ -62,6 +64,11 @@ exec(Ei,X,E,O) :- (
         eval(Ei,E,S,O) *-> [] ;
         (write('Runtime Error'),nl,fail)
     ).
+
+% note: A *-> B; Cis the soft cut operator, if A succeeds, it is A,B 
+%                                           if A fails, it is \+A,C 
+% either B or C will be run, never both.
+
 exec_s(X,O) :- parse(X,S),!,eval([],_,S,O).
 
 % now we define a number of useful testing predicates
