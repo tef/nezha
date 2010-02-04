@@ -68,7 +68,7 @@ exec_s(X,O) :- parse(X,S),!,eval([],_,S,O).
 % in terms of exec.
 expect_fail(Code) :- findall(X,exec_s(Code,X),Output), \+ Output = []-> (writef('"%s" gave "%w" not failure\n',[Code, Output]), !, fail);[].
 expect_one(Code,O) :- expect(Code,[O]).
-expect(Code,Output) :-  findall(X,exec(Code,X),P), P = Output -> []; writef('"%s" is %w not %w\n',[Code, P, Output]).
+expect(Code,Output) :-  findall(X,exec(Code,X),P), (P = Output -> []; writef('"%s" is %w not %w\n',[Code, P, Output])).
 
 % we can define test(name, -Output) where Output is pass or fail
 % these can be defined anywhere, and there is a test runner at the
@@ -248,9 +248,9 @@ nofix(fail,fail).
 %% flow control operators.
 
 infix(conj,right,95) --> "&". 
-infix(and,right,95) --> "and".
-infix(disj,right,96) --> "|".
-infix(or,right,96) --> "or".
+infix(and,right,96) --> "and".
+infix(disj,right,97) --> "|".
+infix(or,right,98) --> "or".
 
 prefix(every,94) --> "every" ,ws0.
 prefix(once,94) --> "once",ws0.
@@ -262,7 +262,7 @@ eval_call(E,Eo,call(and,[X,Y]),Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
 eval_call(E,Eo,call(or,[X,Y]),Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
 eval_call(E,E,call(not,X),[]) :- \+ eval(E,_,X,_), !.
 eval_call(_,_,call(disj,[]),_) :- !, fail.
-eval_call(E,Eo,call(disj,[H|T]),Z) :- !,(eval(E,E1,H,Z) ; !,eval(E1,Eo,call(disj,T),Z)).
+eval_call(E,Eo,call(disj,[H|T]),Z) :- !,(eval(E,Eo,H,Z) ; !,eval(E,Eo,call(disj,T),Z)).
 eval_call(E,Eo,call(conj,X),Z) :- !,eval_conj(E,Eo,X,[],Z).
 
 %eval_conj(+Env,-Env, +ConjList, +LastResult, -Result).
@@ -289,17 +289,23 @@ eval_call(E,Eo,call(assign,[id(T),I]),O) :-
 
 eval(E,E,id(X),O) :-  env_get_var(E,X,O),!.
 
-env_set_var(E, [var(N,O)|Eo], N, O) :- 
-    select(var(N,_),E,Eo) -> []; Eo=E.
+env_set_var(E, Eo, N, O) :- 
+    select(var(N,V),E,_) -> (E=Eo,nb_setarg(1,V,O),!); Eo=[var(N,v(O))|E].
+
 env_get_var(E, N, O) :-
-    member(var(N,O), E).
+    member(var(N,v(O)), E).
 
 test(variables, O) :- (
     expect("x = 1 and x",[1]),
     expect("x = 1 and y = x and y",[1]),
+    expect("x = (1 | 2 | 3) & x = x + 1",[2,3,4]),
+    expect("x = 0 and y = (1 | 2 | 3) & x = x + y",[1,3,6]),
+
     []) -> O = pass; O = fail.
 
-% fixme, handle backtracking properly
+% fixme, handle backtracking assignment properly
+
+
 
 %% new features go here.
 
@@ -324,12 +330,6 @@ ws0 --> [].
 % hello cr lf.
 newline --> [10], linefeed. 
 linefeed --> [13]; [].
-
-
-
-
-
-
 
 % helper functions to run the interpreter
 % from shell - either loads a file or reads from stdin
