@@ -158,7 +158,7 @@ parse(X,S) :- phrase(expr(S),X),!.
 %% evaluator skeleton
 
 % eval(+Environment,-Environment,+Code,-Output)
-:- discontiguous eval/4.
+:- discontiguous eval/4, index(eval(0,0,1,0)).
 
 evalone(Ei,Eo,X,O) :- eval(Ei,Eo,X,O),!.
 
@@ -167,11 +167,11 @@ eval(E,E,X,X) :- var(X),!, fail.
 eval(_,_,fail,_) :- !, fail.
 
 % evaluating a function call
-eval(E,Eo,call(H,T),O) :-  \+ var(H), !,eval_call(E,Eo,call(H,T),O).
+eval(E,Eo,call(H,T),O) :-  \+ var(H), !,eval_call(E,Eo,H,T,O).
 
 % this is seperate to allow overloading
-:- discontiguous eval_call/4.
-eval_call(E,Eo,call(H,T),O) :- builtin(H),!, eval(E,Eo,T,To), apply(H,To,O).
+:- discontiguous eval_call/5, index(eval_call(0,0,1,0,0)).
+eval_call(E,Eo,H,T,O) :- builtin(H),!, eval(E,Eo,T,To), apply(H,To,O).
 
 % evaluating a list
 eval(E,Eo,[H|T],[Ho|To]) :- !, eval(E,E1,H,Ho), eval(E1,Eo,T,To).
@@ -261,7 +261,7 @@ nofix(fail,fail).
 % A & B       do A, then do B. redo A until B succeeds.
 %             like a,b in prolog
 infix(conj,right,95) --> "&". 
-eval_call(E,Eo,call(conj,X),Z) :- !,eval_conj(E,Eo,X,[],Z).
+eval_call(E,Eo,conj,X,Z) :- !,eval_conj(E,Eo,X,[],Z).
 
 %eval_conj(+Env,-Env, +ConjList, +LastResult, -Result).
 eval_conj(E,E,[],X,X). 
@@ -272,15 +272,15 @@ eval_conj(E,Eo,[H|T],_,X) :-  eval(E,E1,H,O), eval_conj(E1,Eo,T,O,X).
 %             like a,!,b in prolog
 
 infix(and,right,96) --> "and".
-eval_call(E,Eo,call(and,[X,Y]),Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
+eval_call(E,Eo,and,[X,Y],Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
 
 
 % A | B       do A until it fails, then do B until it fails. 
 %             like a;b in prolog
 
 infix(disj,right,97) --> "|".
-eval_call(_,_,call(disj,[]),_) :- !, fail.
-eval_call(E,Eo,call(disj,[H|T]),Z) :- !,(eval(E,Eo,H,Z) ; !,eval(E,Eo,call(disj,T),Z)).
+eval_call(_,_,disj,[],_) :- !, fail.
+eval_call(E,Eo,disj,[H|T],Z) :- !,(eval(E,Eo,H,Z) ; !,eval(E,Eo,call(disj,T),Z)).
 
 
 % A or B      do A until it fails, but if A never succeeds,
@@ -288,20 +288,20 @@ eval_call(E,Eo,call(disj,[H|T]),Z) :- !,(eval(E,Eo,H,Z) ; !,eval(E,Eo,call(disj,
 %              redo that one'
 
 infix(or,right,98) --> "or".
-eval_call(E,Eo,call(or,[X,Y]),Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
+eval_call(E,Eo,or,[X,Y],Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
 
 
 % every A     return every possible value of A as a list
 prefix(every,94) --> "every" ,ws0.
-eval_call(E,Eo,call(every,X),Z) :- !,findall(A,eval(E,Eo,X,A),Z),!.
+eval_call(E,Eo,every,X,Z) :- !,findall(A,eval(E,Eo,X,A),Z),!.
 
 % once A      only take the first value of A
 prefix(once,94) --> "once",ws0.
-eval_call(E,Eo,call(once,T),A) :- !,eval(E,Eo,T,A),!.
+eval_call(E,Eo,once,T,A) :- !,eval(E,Eo,T,A),!.
 
 % not A       see if A fails.
 prefix(not,94) --> "not",ws0.
-eval_call(E,E,call(not,X),[]) :- \+ eval(E,_,X,_), !.
+eval_call(E,E,not,X,[]) :- \+ eval(E,_,X,_), !.
 
 test(controlflow, O) :- (
     expect("1 | 2",[1,2]),
@@ -317,12 +317,12 @@ test(controlflow, O) :- (
 infix(assign,right,80) --> "=". 
 infix(backtrackassign,right,80) --> "<-". 
 
-eval_call(E,Eo,call(assign,[id(T),I]),O) :-
+eval_call(E,Eo,assign,[id(T),I],O) :-
     !,
     eval(E,E1,I,O),
     env_set_var(E1,Eo,T,O).
 
-eval_call(E,Eo,call(backtrackassign,[id(T),I]),O) :-
+eval_call(E,Eo,backtrackassign,[id(T),I],O) :-
     !,
     eval(E,E1,I,O),
     env_bt_set_var(E1,Eo,T,O).
