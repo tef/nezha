@@ -194,14 +194,17 @@ item(X) --> number(X).
 item(X) --> "(" ,!, ws0,  expr(X), ws0, ")",!.
 
 % add evaluation rule for a number
+
 eval(E,E,X,X) :- number(X),!.
 
 % define arithmetic and comparison operators
+% these can be compounded i.e 1 < 2 < 3
 infix(le, left,60) --> ">=".
 infix(eq, left,60) --> "==".
 infix(ge,left,60) --> "=<".
 infix(gt, left,60) --> ">".
 infix(lt,left,60) --> "<".
+
 infix(add,left,50) --> "+".
 infix(sub,left,50) --> "-".
 infix(mul,left,45) --> "*".
@@ -221,8 +224,9 @@ builtin(number). apply(number,[X],Y) :-  cast_to_number(X,Y),!.
 
 test(numbers, O) :- ( expect("1 + 1",[2]),
     expect("1 + 2 * 3", [7]),
-    expect("(1 + 2) * 3", [9]) )
-    -> O = pass; O = fail.
+    expect("(1 + 2) * 3", [9]),
+    expect("1 < 2 < 3", [3]), 
+    [])-> O = pass; O = fail.
 
 %% next, identifiers allow us to inroduce builtin values/operators:
 
@@ -247,27 +251,50 @@ nofix(fail,fail).
 
 %% flow control operators.
 
+% A & B       do A, then do B. redo A until B succeeds.
+%             like a,b in prolog
 infix(conj,right,95) --> "&". 
-infix(and,right,96) --> "and".
-infix(disj,right,97) --> "|".
-infix(or,right,98) --> "or".
-
-prefix(every,94) --> "every" ,ws0.
-prefix(once,94) --> "once",ws0.
-prefix(not,94) --> "not",ws0.
-
-eval_call(E,Eo,call(once,T),A) :- !,eval(E,Eo,T,A),!.
-eval_call(E,Eo,call(every,X),Z) :- !,findall(A,eval(E,Eo,X,A),Z),!.
-eval_call(E,Eo,call(and,[X,Y]),Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
-eval_call(E,Eo,call(or,[X,Y]),Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
-eval_call(E,E,call(not,X),[]) :- \+ eval(E,_,X,_), !.
-eval_call(_,_,call(disj,[]),_) :- !, fail.
-eval_call(E,Eo,call(disj,[H|T]),Z) :- !,(eval(E,Eo,H,Z) ; !,eval(E,Eo,call(disj,T),Z)).
 eval_call(E,Eo,call(conj,X),Z) :- !,eval_conj(E,Eo,X,[],Z).
 
 %eval_conj(+Env,-Env, +ConjList, +LastResult, -Result).
 eval_conj(E,E,[],X,X). 
 eval_conj(E,Eo,[H|T],_,X) :-  eval(E,E1,H,O), eval_conj(E1,Eo,T,O,X).
+
+
+% A and B     do A, then do B. do not redo A if B fails.
+%             like a,!,b in prolog
+
+infix(and,right,96) --> "and".
+eval_call(E,Eo,call(and,[X,Y]),Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
+
+
+% A | B       do A until it fails, then do B until it fails. 
+%             like a;b in prolog
+
+infix(disj,right,97) --> "|".
+eval_call(_,_,call(disj,[]),_) :- !, fail.
+eval_call(E,Eo,call(disj,[H|T]),Z) :- !,(eval(E,Eo,H,Z) ; !,eval(E,Eo,call(disj,T),Z)).
+
+
+% A or B      do A until it fails, but if A never succeeds,
+%              do B. A or B or C means 'do the first one to succeed, and only
+%              redo that one'
+
+infix(or,right,98) --> "or".
+eval_call(E,Eo,call(or,[X,Y]),Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
+
+
+% every A     return every possible value of A as a list
+prefix(every,94) --> "every" ,ws0.
+eval_call(E,Eo,call(every,X),Z) :- !,findall(A,eval(E,Eo,X,A),Z),!.
+
+% once A      only take the first value of A
+prefix(once,94) --> "once",ws0.
+eval_call(E,Eo,call(once,T),A) :- !,eval(E,Eo,T,A),!.
+
+% not A       see if A fails.
+prefix(not,94) --> "not",ws0.
+eval_call(E,E,call(not,X),[]) :- \+ eval(E,_,X,_), !.
 
 test(controlflow, O) :- (
     expect("1 | 2",[1,2]),
