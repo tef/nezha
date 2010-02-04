@@ -1,8 +1,36 @@
 #!/usr/bin/swipl -q -t start_script -f 
-% this allows us to run it as ./nezha.pro 
-% which reads files from arguments or from stdin.
 
-%% quick start:
+%% introduction
+
+% nezha aims to be a dynamic goal directed language for writing processes,
+% that talk to each other using pipes and signals, each having their own 
+% distinct namespaces for accesing resources using urls
+
+% nezha aims to be built turtles all the way up, in a nanopass style.
+% iteratively adding literals, parse rules, translations, evaluation,
+% and allow features to be defined within the language.
+
+%% ersatz zen 
+
+% from python.zen import *
+% from unix.philosphy import *
+% from icon import goal_direction, coroutines
+% from perl import braces, regex, virtues
+% from prolog.craft import elegance, understanding 
+% from lua import metatables
+% from moose import roles
+% from erlang import process_supervision, processes
+
+% little languages should be embedded within the language, not buried in strings
+% languages need to grow, language extentions should be first class, and distinct from libraries
+% urls are useful, we should use them to refer to things, and handlers for them are useful too
+
+%% running
+
+% run it as ./nezha.pro which reads files from arguments or from stdin.
+% or (preferred) load it into a swi prolog interpeter.
+
+%% quick start for using swipl
 
 % $ swipl
 % ....
@@ -32,14 +60,14 @@
 % useful setting, but this breaks norgg's prolog
 %:- set_prolog_flag(double_quotes,string).
 
-%% outline
+%% outline of interpreter
 
     %% basic runtime skeleton
     %% test runner
     %% parser skeleton
     %% eval skeleton
     %% language definitions
-
+    %% todo section and future work 
     %% engine, prolog main section, auxillary functions
     %% testrunner
 
@@ -347,9 +375,56 @@ test(variables, O) :- (
 
     []) -> O = pass; O = fail.
 
-% fixme, handle backtracking assignment properly
 
+%% dev plan
+% done, handle backtracking assignment properly
 
+% environment
+% todo, lexical scope, var, := 
+% todo, dynamic scope $foo $bar 
+% todo, $stdin, $stdout, $stderr, $args
+% todo, test defintions, assertions, performance tests
+%       quickcheck like universals
+
+% types
+% todo, collections
+% todo, strings
+% todo, functions 
+% todo, pipes
+% todo, processes
+% todo, urls, file://
+
+% operations
+% todo, indexing a[0]
+% todo, indexing assignment
+% todo, pattern based assignment.
+% todo, string ops, collection ops
+% todo, list comprehensions
+% todo, itertools like operations on lists and expressions.
+% todo, http access, sockets
+% todo, regular expressions, pattern matching
+% todo, queries
+% todo, file operations, pipe operations
+% todo, join like operator on select (see jerlang)
+
+% runtime
+% todo, continuation passing eval, restore, save
+% todo, if case and other flow control
+% todo, exceptions
+% todo, modules
+% todo, signals
+% todo, datetime handling, calendars, timezones
+
+% future
+% maybe, output language: scheme, prolog, etc
+% maybe, optional types (mutated from go) - interfaces and duck type inference
+% todo,  'use' and 'feature' to define new langauge features.
+% maybe, language toolkit as library, using features.
+% maybe, self hosting
+
+% thoughts: build parser and runtime into databases to allow mutability.    
+% link these up in a pipline, assert(main(in, out) :-...), then
+% recorded(..,main(A,B)),recorded(..,main(B,C))...
 
 %% new features go here.
 
