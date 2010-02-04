@@ -1,68 +1,57 @@
 #!/usr/bin/swipl -q -t start_script -f 
 
-% this breaks norgg's prolog
+%% quick start:
 
+% $ swipl
+% ....
+% ?-        this is the prompt.
+% ?- consult('nezha.pro').
+% this tells it to load the file
+% remember: 'foo' is an atom, "foo" is a string.
+
+% then call exec("1 + ",X). 
+% the full stop is important.
+
+% ?- exec("1 | 2",X).
+% X = 1 ;
+% X = 2 ;
+% false.
+
+% hitting ; means try again.
+% hitting enter means you're done.
+
+% see the swiprolog manual for things like firing up your editor
+% or debugging commands.
+
+% to compile a prolog file
+% swipl --goal=start_compile --stand_alone=true -o binary -c source.pro
+
+%% settings
+% useful setting, but this breaks norgg's prolog
 %:- set_prolog_flag(double_quotes,string).
 
-% helper functions to run the interpreter
-% from shell
+%% outline
 
-start_script :-
-    catch(main_script,E,(print_message(error,E),fail)),
-    halt.
-start_script :-
-    halt.
+    %% basic runtime skeleton
+    %% test runner
+    %% parser skeleton
+    %% eval skeleton
+    %% language definitions
 
-% or running as a compiled binary
-% swipl --goal=start_compile --stand_alone=true -o binary -c source.pro
-start_compile :-
-    catch(main_compile,E,(print_message(error,E),fail)),
-    halt.
-start_compile :-
-    halt.
+    %% engine, prolog main section, auxillary functions
+    %% testrunner
 
-% remove all swi prolog arguments
-clean_arguments([--],H,[H,[],[]]).
-clean_arguments([--|T],H,[H|T]).
-clean_arguments([H|T],_,O) :-
-    clean_arguments(T,H,O).
+%% basic runtime skeleton
 
-% pulling them together
-main_script :-
-    current_prolog_flag(argv,X),
-    clean_arguments(X,[],[_,File|_]),
-    run_file(File).
-
-main_compile :-
-    current_prolog_flag(argv,[_,X|_]),
-    run_file(X).
-
-% run a given file
-run_file(F) :-
-    exec_file([],F,_).
-
-exec_file(E,File,Eo) :- 
-    prompt(_,''),
-    (\+File = [] -> (
-        string_to_atom(File,Name),
-        open(Name,read,I)
-        );
-        current_input(I)
-    ),
-    read_file(I,[],Code),
-    exec(E,Code,Eo,_).
-
-
-read_file(I,Li,Lo) :-
-    get_byte(I,C),(
-        (C = -1,!,Lo=[]);
-        Lo=[C|L1], 
-        read_file(I,Li,L1)
-    ).  
+% we start by defining how to run a string.
 
 % shorthand for exectute this string.
+exec(X,O) :- environment(E), exec(E,X,_,O).
 
-exec(X,O) :- exec([],X,_,O). 
+% the initial environment is an empty list.
+environment([]).
+
+% run a given string, with an evironment
 % exec(+Environment, +Code, -EnvOut, Output)
 exec(Ei,X,E,O) :- ( 
         parse(X,S);
@@ -75,34 +64,30 @@ exec(Ei,X,E,O) :- (
     ).
 exec_s(X,O) :- parse(X,S),!,eval([],_,S,O).
 
+% now we define a number of useful testing predicates
+% in terms of exec.
 expect_fail(Code) :- findall(X,exec_s(Code,X),Output), \+ Output = []-> (writef('"%s" gave "%w" not failure\n',[Code, Output]), !, fail);[].
 expect_one(Code,O) :- expect(Code,[O]).
 expect(Code,Output) :-  findall(X,exec(Code,X),P), P = Output -> []; writef('"%s" is %w not %w\n',[Code, P, Output]).
+
+% we can define test(name, -Output) where Output is pass or fail
+% these can be defined anywhere, and there is a test runner at the
+% bottom
 :- discontiguous test/2.
 
+% here is an example test.
 test(example, O) :- (
     []
     ) -> O = pass; O = fail.
 
-%% parser
 
-% useful functions:
-% lookahead a token.
-lookahead(X),X --> X.
+%% parser skeleton
+
+% there are some helper methods defined later for
+% whitespace (ws=/ +/ ws0=/ */) newlines and lookahead
 
 % we define a simple parser based around
 % items, expressions and operators with a given weight 
-
-% common parse tokens.
-% whitespace helpers ws0 means specific whitespace, ws means any.
-ws0 --> [X], {code_type(X, white)}, ws.
-ws --> ws0.
-ws --> [].
-
-% hello cr lf.
-newline --> [10], linefeed. 
-linefeed --> [13]; [].
-
 
 % hookable part. use item(X) --> ... to define
 % new item rules. items are simple nodes that
@@ -135,7 +120,7 @@ exprn(O,N1) --> prefix(Op, N),!, { N =< N1 }, exprn(R,N), !, build(Op,R,Z), foll
 follow(L,O,N1) --> (postfix(Op,N) -> {N =< N1}), !, build(Op,L,Z), follow(Z, O, N1).
 
 % infix expressions capture another expression to the right and can be followed.
-follow(L,O,N1) --> ws, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws, exprn(R,N),!, build(Op,L,R,Z), follow(Z, O, N1).
+follow(L,O,N1) --> ws0, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws0, exprn(R,N),!, build(Op,L,R,Z), follow(Z, O, N1).
 
 % the expression might not have anything following it.
 follow(O,O,_) --> !.
@@ -159,9 +144,11 @@ postfix(_,_) --> {fail}.
 prefix(_,_) --> {fail}.
 
 % a top level expression starts at 100
-expr(L) --> ws,exprn(L,100).
+expr(L) --> ws0,exprn(L,100).
 % to parse the dcg, parse(+String, -Structure).
 parse(X,S) :- phrase(expr(S),X),!. 
+
+%% evaluator skeleton
 
 % eval(+Environment,-Environment,+Code,-Output)
 :- discontiguous eval/4.
@@ -172,12 +159,12 @@ evalone(Ei,Eo,X,O) :- eval(Ei,Eo,X,O),!.
 eval(E,E,X,X) :- var(X),!, fail.
 eval(_,_,fail,_) :- !, fail.
 
-eval(E,Eo,call(H,T),O) :-  \+ var(H), 
-    atom(H) -> (
-        (builtin(H),!, eval(E,Eo,T,To), apply(H,To,O));
-        (!, eval_call(E,Eo,call(H,T),O))
-    );
-    (!,eval(E,E1,H,Ho),\+H=Ho,eval(E1,Eo,call(Ho,T),O)).
+% evaluating a function call
+eval(E,Eo,call(H,T),O) :-  \+ var(H), !,eval_call(E,Eo,call(H,T),O).
+
+% this is seperate to allow overloading
+:- discontiguous eval_call/4.
+eval_call(E,Eo,call(H,T),O) :- builtin(H),!, eval(E,Eo,T,To), apply(H,To,O).
 
 % evaluating a list
 eval(E,Eo,[H|T],[Ho|To]) :- !, eval(E,E1,H,Ho), eval(E1,Eo,T,To).
@@ -186,6 +173,9 @@ eval(E,E,[],[]) :- !.
 %% use builtin/1 to indicate a builtin operator
 %% and use apply(name,[args],output) to implement it.
 :- discontiguous builtin/1, apply/3.
+
+
+%% language skeleton
 
 %% language defintion of numbers with addition
 
@@ -201,7 +191,7 @@ digit(D) --> [D], {code_type(D, digit)},!.
 item(X) --> number(X).
 
 % add parenthesis rule for an expression.
-item(X) --> "(" ,!, ws,  expr(X), ws, ")",!.
+item(X) --> "(" ,!, ws0,  expr(X), ws0, ")",!.
 
 % add evaluation rule for a number
 eval(E,E,X,X) :- number(X),!.
@@ -235,7 +225,7 @@ test(numbers, O) :- ( expect("1 + 1",[2]),
     expect("(1 + 2) * 3", [9]) )
     -> O = pass; O = fail.
 
-%% builtins:
+%% next, identifiers allow us to inroduce builtin values/operators:
 
 identifier(A) -->  csym(C),csyms(N), {string_to_atom([C|N],A)},!. 
 csyms([H|T]) --> csym_(H), csyms(T).
@@ -243,12 +233,18 @@ csyms([]) --> [].
 csym(C) --> [C], {code_type(C, csymf)}.
 csym_(C) --> [C], {code_type(C, csym)}.
 
-exprn(O,N1) --> identifier(X), !, idfollow(O,X,N1). 
+% identifiers are matched after operators
+% fixme? use same matching.
+exprn(O,N) --> identifier(X), !, idbuild(X,O1), !, follow(O1,O,N). 
 
-idfollow(O,X,N1) --> !,idbuild(X,Xo), follow(Xo, O, N1). 
+idbuild(X,O) --> nofix(X,O),!.
+idbuild(X,id(X)) --> !.
 
-idbuild(fail,fail) --> !.
+% nofix operators take no arguments.
+% useful for special builtin values.
 
+:- discontiguous nofix/4.
+nofix(fail,fail).
 
 %% flow control operators.
 
@@ -256,11 +252,10 @@ infix(conj,right,95) --> "&".
 infix(and,right,95) --> "and".
 infix(disj,right,96) --> "|".
 infix(or,right,96) --> "or".
-prefix(every,94) --> "every" ,ws.
-prefix(once,94) --> "once",ws.
 
-
-prefix(not,94) --> "not",ws.
+prefix(every,94) --> "every" ,ws0.
+prefix(once,94) --> "once",ws0.
+prefix(not,94) --> "not",ws0.
 
 eval_call(E,Eo,call(once,T),A) :- !,eval(E,Eo,T,A),!.
 eval_call(E,Eo,call(every,X),Z) :- !,findall(A,eval(E,Eo,X,A),Z),!.
@@ -290,8 +285,86 @@ test(placeholder, O) :- (
     ) -> O = pass; O = fail. 
 
 
-% test runner
+
+%% language engine starts here.
+
+% useful functions for parsing:
+% lookahead a token.
+lookahead(X),X --> X.
+
+% common parse tokens.
+% whitespace helpers ws means specific whitespace, ws0 means any.
+ws --> [X], {code_type(X, white)}, ws0.
+ws0 --> ws.
+ws0 --> [].
+
+% hello cr lf.
+newline --> [10], linefeed. 
+linefeed --> [13]; [].
+
+
+
+
+
+
+
+% helper functions to run the interpreter
+% from shell - either loads a file or reads from stdin
+% and calls exec(String, _).
+
+start_script :-
+    catch(main_script,E,(print_message(error,E),fail)),
+    halt.
+start_script :-
+    halt.
+
+start_compile :-
+    catch(main_compile,E,(print_message(error,E),fail)),
+    halt.
+start_compile :-
+    halt.
+
+% remove all swi prolog arguments
+clean_arguments([--],H,[H,[],[]]).
+clean_arguments([--|T],H,[H|T]).
+clean_arguments([H|T],_,O) :-
+    clean_arguments(T,H,O).
+
+% pulling them together
+main_script :-
+    current_prolog_flag(argv,X),
+    clean_arguments(X,[],[_,File|_]),
+    run_file(File).
+
+main_compile :-
+    current_prolog_flag(argv,[_,X|_]),
+    run_file(X).
+
+% run a given file
+run_file(File) :- 
+    prompt(_,''),
+    (\+File = [] -> (
+        string_to_atom(File,Name),
+        open(Name,read,I)
+        );
+        current_input(I)
+    ),
+    read_file(I,[],Code),
+    exec(Code,_).
+
+
+read_file(I,Li,Lo) :-
+    get_byte(I,C),(
+        (C = -1,!,Lo=[]);
+        Lo=[C|L1], 
+        read_file(I,Li,L1)
+    ).  
+
+% test runner is the last thing to run
+
 test_out([]).
 test_out([[_,pass]|T]) :- test_out(T).
 test_out([[N,O]|T]) :- writef('%w %w\n',[O,N]), test_out(T).
 :- findall([T,O],test(T,O), L),  test_out(L).
+
+
