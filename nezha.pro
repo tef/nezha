@@ -24,6 +24,9 @@
 % little languages should be embedded within the language, not buried in strings
 % languages need to grow, language extentions should be first class, and distinct from libraries
 % urls are useful, we should use them to refer to things, and handlers for them are useful too
+% some special cases happen often enough to bend the rules.
+% it is better to have different things for different intents, even if they are similar underneath.
+% patterns indicate a fault in the language - boilerplate is worth avoiding when possible.
 
 %% running
 
@@ -42,7 +45,7 @@
 
 % remember: in prolog, 'nezha.pro' is an atom, "foo" is a string.
 
-% then call exec("1 + ",X). 
+% then call exec("1 + 2",X). 
 
 % the full stop is important. in prolog it terminates expressions.
 
@@ -384,10 +387,22 @@ test(variables, O) :- (
 %% dev plan
 % done, handle backtracking assignment properly
 
+% always: improve tests
+
+% next think about scope, stack frames and continuations/box model.
+
+
 % environment
-% todo, lexical scope, var, := 
+% todo, lexical scope, var, :=
+%       use a database? - use an assoc?
+%       also how to store code? ast?
+    
+
 % todo, dynamic scope $foo $bar 
+
 % todo, $stdin, $stdout, $stderr, $args
+%       print would be good?
+
 % todo, test defintions, assertions, performance tests
 %       quickcheck like universals
 
