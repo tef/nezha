@@ -51,7 +51,6 @@
 
 % ?- exec("1 or 2",X).
 % X = 1 ;
-% X = 2 ;
 % false.
 
 % hitting ; means try again.
@@ -65,14 +64,21 @@
 
 %% outline of interpreter
 
+    % framework for language
     %% basic runtime skeleton
     %% test runner
     %% parser skeleton
     %% eval skeleton
+
+    % language specific features
     %% language definitions
-    %% todo section and future work 
+    %% todo section and future work
+
+    % runtime
     %% engine, prolog main section, auxillary functions
     %% testrunner
+
+    %% bibliography
 
 %% runtime settings
 % useful setting, but this breaks norgg's older swi prolog
@@ -110,8 +116,7 @@ exec_s(X,O) :- parse(X,S),!,eval([],_,S,O).
 % now we define a number of useful testing predicates
 % in terms of exec.
 expect_fail(Code) :- findall(X,exec_s(Code,X),Output), \+ Output = []-> (writef('"%s" gave "%w" not failure\n',[Code, Output]), !, fail);[].
-expect_one(Code,O) :- expect(Code,[O]).
-expect(Code,Output) :-  findall(X,exec(Code,X),P), (P = Output -> []; writef('"%s" is %w not %w\n',[Code, P, Output])).
+expect(Code,Output) :-  exec(Code,X) -> []; writef('"%s" is %w not %w\n',[Code, X, Output]).
 
 % we can define test(name, -Output) where Output is pass or fail
 % these can be defined anywhere, and there is a test runner at the
@@ -264,9 +269,9 @@ builtin(ge). apply(ge,[X,Y],Y) :-  X >=Y,!.
 builtin(number). apply(number,[X],Y) :-  cast_to_number(X,Y),!.
 
 test(numbers, O) :- ( expect("1 + 1",[2]),
-    expect("1 + 2 * 3", [7]),
-    expect("(1 + 2) * 3", [9]),
-    expect("1 < 2 < 3", [3]), 
+    expect("1 + 2 * 3", 7),
+    expect("(1 + 2) * 3", 9),
+    expect("1 < 2 < 3", 3), 
     [])-> O = pass; O = fail.
 
 %% next, identifiers allow us to inroduce builtin values/operators:
@@ -309,10 +314,10 @@ prefix(not,94) --> "not",ws0.
 eval_call(E,E,not,X,[]) :- \+ eval(E,_,X,_), !.
 
 test(controlflow, O) :- (
-    expect("1 or 2",[1]),
-    expect("(1 or 2) and 3", [3]),
+    expect("1 or 2",1),
+    expect("(1 or 2) and 3", 3),
     expect_fail("not 1"),
-    expect("fail or 3 or 4", [3]),
+    expect("fail or 3 or 4", 3),
     []) -> O = pass; O = fail.
 
 %% variables and assignment
@@ -333,71 +338,62 @@ env_get_var(E, N, O) :-
     member(var(N,v(O)), E).
 
 test(variables, O) :- (
-    expect("x = 1 and x",[1]),
-    expect("x = 1 and y = x and y",[1]),
-    expect("x = 1 and x = x + 1",[2]),
+    expect("x = 1 and x",1),
+    expect("x = 1 and y = x and y",1),
+    expect("x = 1 and x = x + 1",2),
 
     []) -> O = pass; O = fail.
 
 
-%% dev plan
+%% dev log
+% done, initial sekelton recovered from haklog 
+% done, reordered code + documentation
 % done, handle backtracking assignment properly
-% done, remove backtracking
+% done, remove backtracking - use return or fail as expressions
 
-% todo, implement functions, generators.
+% todo, improve test coverage, measure test coverage, profile, etc.
 
-% always: improve tests
+% todo lexical scope via stack
 
-% next think about scope, stack frames and continuations/box model.
-% continuations? stack machine?
-% byrd box ? jcon model?
-
-
-% todo, lexical scope, var, :=
-%       use a database? - use an assoc?
-%       also how to store code? ast?
+% todo, implement functions, closures ala lua.
     
-
 % todo, dynamic scope $foo $bar 
-
 % todo, $stdin, $stdout, $stderr, $args
 %       print would be good?
 
 % todo, test defintions, assertions, performance tests
-%       quickcheck like universals
+%       quickcheck like universals, fuzzing?
 
-
-% types
+% todo, iteration interface
 % todo, collections
 % todo, strings
 % todo, functions 
-% todo, pipes
-% todo, processes
-% todo, urls, file://
-
-% operations
 % todo, indexing a[0]
 % todo, indexing assignment
 % todo, pattern based assignment.
 % todo, string ops, collection ops
 % todo, list comprehensions
-% todo, itertools like operations on lists and expressions.
-% todo, http access, sockets
+% todo, generators
+% todo, itertools like operations on lists and generators.
 % todo, regular expressions, pattern matching
-% todo, queries
-% todo, file operations, pipe operations
-% todo, join like operator on select (see jerlang)
 % todo, aggregate operators - reduction i.e (a,b :- a+b) over l
 %                             maybe l = aggregate x {
 %                                         a+b -> a+b
 %                                    }     
-% runtime
-% todo, continuation passing eval, restore, save
 % todo, if case and other flow control
 % todo, exceptions
 % todo, modules
 % todo, signals
 % todo, datetime handling, calendars, timezones
+
+% todo, pipes
+% todo, join like operator on select (see jerlang)
+% todo, queries
+% todo, processes
+% todo, urls, file://
+% todo, http access, sockets
+% todo, file operations, pipe operations
+
 
 % future
 % maybe, output language: scheme, prolog, etc
@@ -492,5 +488,30 @@ test_out([]).
 test_out([[_,pass]|T]) :- test_out(T).
 test_out([[N,O]|T]) :- writef('%w %w\n',[O,N]), test_out(T).
 :- findall([T,O],test(T,O), L),  test_out(L).
+
+
+%%%% Bibliography
+% Use of Prolog for developing a new programming language
+% The Implementation of Lua 5.0
+% A Nanopass Framework for Compiler Education
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
 
 
