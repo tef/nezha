@@ -14,12 +14,12 @@
 
 % from python.zen import *
 % from unix.philosphy import *
-% from icon import goal_direction, coroutines
+% from icon import goal_direction
 % from perl import braces, regex, virtues
 % from prolog.craft import elegance, understanding 
-% from lua import metatables
+% from lua import metatables, coroutines
 % from moose import roles
-% from erlang import supervision, processes
+% from erlang import supervision,processes
 
 % little languages should be embedded within the language, not buried in strings
 % languages need to grow, language extentions should be first class, and distinct from libraries
@@ -27,7 +27,7 @@
 % some special cases happen often enough to bend the rules.
 % it is better to have different things for different intents, even if they are similar underneath.
 % patterns indicate a fault in the language - boilerplate is worth avoiding when possible.
-
+% expressions can succeed or fail. coroutines can return a number of values or fail.
 %% running
 
 % run it as ./nezha.pro which reads files from arguments or from stdin.
@@ -49,7 +49,7 @@
 
 % the full stop is important. in prolog it terminates expressions.
 
-% ?- exec("1 | 2",X).
+% ?- exec("1 or 2",X).
 % X = 1 ;
 % X = 2 ;
 % false.
@@ -196,8 +196,6 @@ parse(X,S) :- phrase(expr(S),X),!.
 % eval(+Environment,-Environment,+Code,-Output)
 :- discontiguous eval/4, index(eval(0,0,1,0)).
 
-evalone(Ei,Eo,X,O) :- eval(Ei,Eo,X,O),!.
-
 % prevent unbound variables.
 eval(E,E,X,X) :- var(X),!, fail.
 eval(_,_,fail,_) :- !, fail.
@@ -207,10 +205,10 @@ eval(E,Eo,call(H,T),O) :-  \+ var(H), !,eval_call(E,Eo,H,T,O).
 
 % this is seperate to allow overloading
 :- discontiguous eval_call/5, index(eval_call(0,0,1,0,0)).
-eval_call(E,Eo,H,T,O) :- builtin(H),!, eval(E,Eo,T,To), apply(H,To,O).
+eval_call(E,Eo,H,T,O) :- builtin(H),!, eval(E,Eo,T,To), !, apply(H,To,O).
 
 % evaluating a list
-eval(E,Eo,[H|T],[Ho|To]) :- !, eval(E,E1,H,Ho), eval(E1,Eo,T,To).
+eval(E,Eo,[H|T],[Ho|To]) :- !, eval(E,E1,H,Ho),!, eval(E1,Eo,T,To).
 eval(E,E,[],[]) :- !.
 
 %% use builtin/1 to indicate a builtin operator
@@ -294,82 +292,42 @@ nofix(fail,fail).
 
 %% flow control operators.
 
-% A & B       do A, then do B. redo A until B succeeds.
-%             like a,b in prolog
-infix(conj,right,95) --> "&". 
-eval_call(E,Eo,conj,X,Z) :- !,eval_conj(E,Eo,X,[],Z).
-
-%eval_conj(+Env,-Env, +ConjList, +LastResult, -Result).
-eval_conj(E,E,[],X,X). 
-eval_conj(E,Eo,[H|T],_,X) :-  eval(E,E1,H,O), eval_conj(E1,Eo,T,O,X).
-
-
-% A and B     do A, then do B. do not redo A if B fails.
+% A and B     do A, then do B. 
 %             like a,!,b in prolog
 
 infix(and,right,96) --> "and".
 eval_call(E,Eo,and,[X,Y],Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
 
-
-% A | B       do A until it fails, then do B until it fails. 
-%             like a;b in prolog
-
-infix(disj,right,97) --> "|".
-eval_call(_,_,disj,[],_) :- !, fail.
-eval_call(E,Eo,disj,[H|T],Z) :- !,(eval(E,Eo,H,Z) ; !,eval(E,Eo,call(disj,T),Z)).
-
-
-% A or B      do A until it fails, but if A never succeeds,
-%              do B. A or B or C means 'do the first one to succeed, and only
-%              redo that one'
+% A or B      do A but if A  fails
+%              do B.
 
 infix(or,right,98) --> "or".
 eval_call(E,Eo,or,[X,Y],Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
-
-
-% every A     return every possible value of A as a list
-prefix(every,94) --> "every" ,ws0.
-eval_call(E,Eo,every,X,Z) :- !,findall(A,eval(E,Eo,X,A),Z),!.
-
-% once A      only take the first value of A
-prefix(once,94) --> "once",ws0.
-eval_call(E,Eo,once,T,A) :- !,eval(E,Eo,T,A),!.
 
 % not A       see if A fails.
 prefix(not,94) --> "not",ws0.
 eval_call(E,E,not,X,[]) :- \+ eval(E,_,X,_), !.
 
 test(controlflow, O) :- (
-    expect("1 | 2",[1,2]),
-    expect("(1 | 2) and 3", [3]),
-    expect("every (1 | 2 | 3)", [[1,2,3]]),
+    expect("1 or 2",[1]),
+    expect("(1 or 2) and 3", [3]),
     expect_fail("not 1"),
-    expect("(1 | 2) or 3", [1,2]),
-    expect("fail or 3 or 4", [3]), 
+    expect("fail or 3 or 4", [3]),
     []) -> O = pass; O = fail.
 
 %% variables and assignment
 
 infix(assign,right,80) --> "=". 
-infix(backtrackassign,right,80) --> "<-". 
 
 eval_call(E,Eo,assign,[id(T),I],O) :-
     !,
     eval(E,E1,I,O),
     env_set_var(E1,Eo,T,O).
 
-eval_call(E,Eo,backtrackassign,[id(T),I],O) :-
-    !,
-    eval(E,E1,I,O),
-    env_bt_set_var(E1,Eo,T,O).
-
 eval(E,E,id(X),O) :-  env_get_var(E,X,O),!.
 
 env_set_var(E, Eo, N, O) :- 
     select(var(N,V),E,_) -> (E=Eo,nb_setarg(1,V,O),!); Eo=[var(N,v(O))|E].
-
-env_bt_set_var(E, Eo, N, O) :- 
-    select(var(N,V),E,_) -> (E=Eo,setarg(1,V,O),!); Eo=[var(N,v(O))|E].
 
 env_get_var(E, N, O) :-
     member(var(N,v(O)), E).
@@ -377,22 +335,24 @@ env_get_var(E, N, O) :-
 test(variables, O) :- (
     expect("x = 1 and x",[1]),
     expect("x = 1 and y = x and y",[1]),
-    expect("x = (1 | 2 | 3) & x = x + 1",[2,3,4]),
-    expect("x = 0 and y = (1 | 2 | 3) & x = x + y",[1,3,6]),
-    expect("x = 0 and y = (1 | 2 | 3) & x <- x + y",[1,2,3]),
+    expect("x = 1 and x = x + 1",[2]),
 
     []) -> O = pass; O = fail.
 
 
 %% dev plan
 % done, handle backtracking assignment properly
+% done, remove backtracking
+
+% todo, implement functions, generators.
 
 % always: improve tests
 
 % next think about scope, stack frames and continuations/box model.
+% continuations? stack machine?
+% byrd box ? jcon model?
 
 
-% environment
 % todo, lexical scope, var, :=
 %       use a database? - use an assoc?
 %       also how to store code? ast?
@@ -405,6 +365,7 @@ test(variables, O) :- (
 
 % todo, test defintions, assertions, performance tests
 %       quickcheck like universals
+
 
 % types
 % todo, collections
@@ -426,7 +387,10 @@ test(variables, O) :- (
 % todo, queries
 % todo, file operations, pipe operations
 % todo, join like operator on select (see jerlang)
-
+% todo, aggregate operators - reduction i.e (a,b :- a+b) over l
+%                             maybe l = aggregate x {
+%                                         a+b -> a+b
+%                                    }     
 % runtime
 % todo, continuation passing eval, restore, save
 % todo, if case and other flow control
