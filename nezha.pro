@@ -162,17 +162,17 @@ exprn(O,N) --> item(L), !, follow(L,O,N).
 
 % an expression is a prefix token, at a lower weight, with a single expression
 % bound to it.
-exprn(O,N1) --> prefix(Op, N),!, { N =< N1 }, exprn(R,N), !, build(Op,R,Z), follow(Z, O, N1).
+exprn(O,N1) --> prefix(Op, N),!, { N =< N1 }, exprn(R,N), !, build_(Op,R,Z), follow(Z, O, N1).
 
 % expressions can be followed by operators, i.e 4 then '+'
 % these rules check for trailing operators, and consume 
 % more expressions as necessary
 
 % postfix operators can follow an expression head, and can be followed
-follow(L,O,N1) --> (postfix(Op,N) -> {N =< N1}), !, build(Op,L,Z), follow(Z, O, N1).
+follow(L,O,N1) --> (postfix(Op,N) -> {N =< N1}), !, build_(Op,L,Z), follow(Z, O, N1).
 
 % infix expressions capture another expression to the right and can be followed.
-follow(L,O,N1) --> ws0, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws0, exprn(R,N),!, build(Op,L,R,Z), follow(Z, O, N1).
+follow(L,O,N1) --> ws0, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws0, exprn(R,N),!, build_(Op,L,R,Z), follow(Z, O, N1).
 
 % the expression might not have anything following it.
 follow(O,O,_) --> !.
@@ -183,8 +183,15 @@ assoc(right, A, B) :-  A =< B.
 assoc(left, A, B) :- A < B.
 
 % operators can be re-written before being inserted into the tree.
-build(C,R,call(C,R)) --> !.
-build(C,L,R,call(C,[L,R])) --> !.
+
+:- discontiguous build/3, build/4.
+build_(C,R,O) --> {build(C,R,O)}.
+build_(C,R,call(C,R)) --> !.
+build(_,_,_) --> {fail}.
+
+build_(C,L,R,O) --> {build(C,L,R,O)}.
+build_(C,L,R,call(C,[L,R])) --> !.
+build(_,_,_,_) --> {fail}.
 
 % operators are simply parse rules.
 :- discontiguous infix/5, prefix/4, postfix/4.
@@ -249,11 +256,13 @@ eval(E,E,X,X) :- number(X),!.
 
 % define arithmetic and comparison operators
 % these can be compounded i.e 1 < 2 < 3
-infix(le, left,60) --> ">=".
+
+infix(O,A,N) --> infix_(O,A,N).
+infix(le, left,60) --> "=<".
+infix(ge,left,60) --> ">=".
 infix(eq, left,60) --> "==".
-infix(ge,left,60) --> "=<".
 infix(gt, left,60) --> ">".
-infix(lt,left,60) --> "<", \+ "-".
+infix(lt,left,60) --> "<".
 
 infix(add,left,50) --> "+".
 infix(sub,left,50) --> "-".
@@ -363,34 +372,50 @@ test(variables, O) :- (
 
     []) -> O = pass; O = fail.
 
+% collections
+
+item(collection([I|T])) --> "[", ws0, expr(I), collection_tail(T), ws0, "]".
+
+collection_tail([I|O]) -->  ws0,",", ws0, expr(I), collection_tail(O).
+collection_tail([]) --> ws0 , ",".
+collection_tail([]) --> [].
+
+infix_(strpair, right, 20) --> "=>".
+infix(pair, right, 20) --> ":".
+
+build(pair,X,O,pair(X,O)).
+build(strpair,id(X),O,pair(literal(X),O)).
+
 
 %% dev log
 % done, initial sekelton recovered from haklog 
 % done, reordered code + documentation
 % done, handle backtracking assignment properly
 % done, remove backtracking - use return or fail as expressions
+% done, adding $foo identifiers 
 
 % todo, improve test coverage, measure test coverage, profile, etc.
 
+% needs doing
+% todo, collections a :b,a =>b, tuples , 
+% todo, iteration interface
+% todo, strings, literals
+% todo, tuple assignment
+% todo, indexing a[0]
+% todo, if case and other flow control
+
+% needs thinking
 % todo lexical scope via stack
 % todo bytecode - lua, python?
-
 % todo, implement functions, closures ala lua.
     
-% todo, dynamic scope $foo $bar 
 % todo, $stdin, $stdout, $stderr, $args
 %       print would be good?
 
 % todo, test defintions, assertions, performance tests
 %       quickcheck like universals, fuzzing?
 
-% todo, iteration interface
-% todo, collections a :b,a =>b, tuples , 
-% todo, strings, literals
-% todo, functions 
-% todo, indexing a[0]
-% todo, tuple assignment
-% todo, pattern based assignment.
+
 
 % todo, string ops, collection ops
 % todo, list comprehensions
@@ -402,7 +427,6 @@ test(variables, O) :- (
 %                                         a+b -> a+b
 %                                    }     
 
-% todo, if case and other flow control
 % todo, exceptions
 % todo, modules
 % todo, signals
