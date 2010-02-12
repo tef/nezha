@@ -12,7 +12,7 @@
 
 %% ersatz zen 
 
-% from python.zen import *
+% from python import generators, itertools, zen
 % from unix.philosphy import *
 % from icon import goal_direction
 % from perl import braces, regex, virtues
@@ -28,6 +28,7 @@
 % it is better to have different things for different intents, even if they are similar underneath.
 % patterns indicate a fault in the language - boilerplate is worth avoiding when possible.
 % expressions can succeed or fail. coroutines can return a number of values or fail.
+
 %% running
 
 % run it as ./nezha.pro which reads files from arguments or from stdin.
@@ -92,8 +93,10 @@
 % shorthand for exectute this string.
 exec(X,O) :- environment(E), exec(E,X,_,O).
 
-% the initial environment is an empty list.
-environment([]).
+% the initial environment is a pair of empty lists
+environment(e([],[])).
+locals(e(_,L),L).
+globals(e(G,_),G).
 
 % run a given string, with an evironment
 % exec(+Environment, +Code, -EnvOut, Output)
@@ -116,7 +119,8 @@ exec_s(X,O) :- parse(X,S),!,eval([],_,S,O).
 % now we define a number of useful testing predicates
 % in terms of exec.
 expect_fail(Code) :- findall(X,exec_s(Code,X),Output), \+ Output = []-> (writef('"%s" gave "%w" not failure\n',[Code, Output]), !, fail);[].
-expect(Code,Output) :-  exec(Code,X) -> []; writef('"%s" is %w not %w\n',[Code, X, Output]).
+expect(Code,Output) :-  exec(Code,X),!, (Output = X -> []; writef('"%s" is %w not %w\n',[Code, X, Output])).
+expect(Code,Output) :-  !, writef('"%s" failed, not %w\n',[Code, Output]).
 
 % we can define test(name, -Output) where Output is pass or fail
 % these can be defined anywhere, and there is a test runner at the
@@ -258,17 +262,18 @@ infix(div,left,45) --> "/".
 prefix(neg,5) --> "-".
 
 builtin(add). apply(add,[X,Y],O) :-plus(X,Y,O),!.
-builtin(sub). apply(sub,[X,Y],O) :- O is X-Y,!.
+builtin(sub). apply(sub,[X,Y],O) :- O is X - Y,!.
 builtin(neg). apply(neg,[X],O) :- O is 0 - X,!.
-builtin(mul). apply(mul,[X,Y],O) :- O is X*Y,!.
-builtin(div). apply(div,[X,Y],O) :- O is X/Y .
-builtin(lt). apply(lt,[X,Y],Y) :-  X <Y,!.
-builtin(le). apply(le,[X,Y],Y) :-  X =<Y,!.
-builtin(gt). apply(gt,[X,Y],Y) :-  X >Y,!.
-builtin(ge). apply(ge,[X,Y],Y) :-  X >=Y,!.
+builtin(mul). apply(mul,[X,Y],O) :- O is X * Y,!.
+builtin(div). apply(div,[X,Y],O) :- O is X  /Y .
+builtin(lt). apply(lt,[X,Y],Y) :-  X < Y,!.
+builtin(le). apply(le,[X,Y],Y) :-  X =< Y,!.
+builtin(gt). apply(gt,[X,Y],Y) :-  X > Y,!.
+builtin(ge). apply(ge,[X,Y],Y) :-  X >= Y,!.
 builtin(number). apply(number,[X],Y) :-  cast_to_number(X,Y),!.
 
-test(numbers, O) :- ( expect("1 + 1",[2]),
+test(numbers, O) :- (
+    expect("1 + 1",2),
     expect("1 + 2 * 3", 7),
     expect("(1 + 2) * 3", 9),
     parse("(1 + 2) + 3",X),
@@ -278,15 +283,18 @@ test(numbers, O) :- ( expect("1 + 1",[2]),
 
 %% next, identifiers allow us to inroduce builtin values/operators:
 
-identifier(A) -->  csym(C),csyms(N), {string_to_atom([C|N],A)},!. 
+local_identifier(A) -->  csym(C),csyms(N), {string_to_atom([C|N],A)},!. 
 csyms([H|T]) --> csym_(H), csyms(T).
 csyms([]) --> [].
 csym(C) --> [C], {code_type(C, csymf)}.
 csym_(C) --> [C], {code_type(C, csym)}.
 
+global_identifier(A) --> "$", !, csym(C),csyms(N), {string_to_atom([C|N],A)},!. 
+
 % identifiers are matched after operators
 % fixme? use same matching.
-exprn(O,N) --> identifier(X), !, idbuild(X,O1), !, follow(O1,O,N). 
+exprn(O,N) --> local_identifier(X), !, idbuild(X,O1), !, follow(O1,O,N). 
+exprn(O,N) --> global_identifier(X), !, follow(global(X),O,N). 
 
 idbuild(X,O) --> nofix(X,O),!.
 idbuild(X,id(X)) --> !.
@@ -300,14 +308,10 @@ nofix(fail,fail).
 %% flow control operators.
 
 % A and B     do A, then do B. 
-%             like a,!,b in prolog
-
 infix(and,right,96) --> "and".
 eval_call(E,Eo,and,[X,Y],Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
 
-% A or B      do A but if A  fails
-%              do B.
-
+% A or B      do A but if A  fails do B.
 infix(or,right,98) --> "or".
 eval_call(E,Eo,or,[X,Y],Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
 
@@ -331,18 +335,31 @@ eval_call(E,Eo,assign,[id(T),I],O) :-
     eval(E,E1,I,O),
     env_set_var(E1,Eo,T,O).
 
-eval(E,E,id(X),O) :-  env_get_var(E,X,O),!.
+eval_call(E,Eo,assign,[global(T),I],O) :-
+    !,
+    eval(E,E1,I,O),
+    env_set_global_var(E1,Eo,T,O).
 
-env_set_var(E, Eo, N, O) :- 
+eval(E,E,id(X),O) :-  env_get_var(E,X,O),!.
+eval(E,E,global(X),O) :-  env_get_global_var(E,X,O),!.
+
+env_set_var(e(G,E), e(G,Eo), N, O) :- 
     select(var(N,V),E,_) -> (E=Eo,nb_setarg(1,V,O),!); Eo=[var(N,v(O))|E].
 
-env_get_var(E, N, O) :-
+env_get_var(e(_,E), N, O) :-
+    member(var(N,v(O)), E).
+
+env_set_global_var(e(E,L), e(Eo,L), N, O) :- 
+    select(var(N,V),E,_) -> (E=Eo,nb_setarg(1,V,O),!); Eo=[var(N,v(O))|E].
+
+env_get_global_var(e(E,_), N, O) :-
     member(var(N,v(O)), E).
 
 test(variables, O) :- (
     expect("x = 1 and x",1),
     expect("x = 1 and y = x and y",1),
     expect("x = 1 and x = x + 1",2),
+    expect("$x = 1 and x = $x + 1",2),
 
     []) -> O = pass; O = fail.
 
@@ -368,12 +385,13 @@ test(variables, O) :- (
 %       quickcheck like universals, fuzzing?
 
 % todo, iteration interface
-% todo, collections
-% todo, strings
+% todo, collections a :b,a =>b, tuples , 
+% todo, strings, literals
 % todo, functions 
 % todo, indexing a[0]
-% todo, indexing assignment
+% todo, tuple assignment
 % todo, pattern based assignment.
+
 % todo, string ops, collection ops
 % todo, list comprehensions
 % todo, generators
@@ -383,6 +401,7 @@ test(variables, O) :- (
 %                             maybe l = aggregate x {
 %                                         a+b -> a+b
 %                                    }     
+
 % todo, if case and other flow control
 % todo, exceptions
 % todo, modules
@@ -499,22 +518,3 @@ test_out([[N,O]|T]) :- writef('%w %w\n',[O,N]), test_out(T).
 % A Nanopass Framework for Compiler Education
 %
 %
-%
-%
-%
-%
-%
-%
-%
-%
-%
-%
-%
-%
-%
-%
-%
-%
-
-
-
