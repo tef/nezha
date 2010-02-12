@@ -271,6 +271,8 @@ builtin(number). apply(number,[X],Y) :-  cast_to_number(X,Y),!.
 test(numbers, O) :- ( expect("1 + 1",[2]),
     expect("1 + 2 * 3", 7),
     expect("(1 + 2) * 3", 9),
+    parse("(1 + 2) + 3",X),
+    parse("1 + 2 + 3",X),
     expect("1 < 2 < 3", 3), 
     [])-> O = pass; O = fail.
 
@@ -354,6 +356,7 @@ test(variables, O) :- (
 % todo, improve test coverage, measure test coverage, profile, etc.
 
 % todo lexical scope via stack
+% todo bytecode - lua, python?
 
 % todo, implement functions, closures ala lua.
     
