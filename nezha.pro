@@ -170,6 +170,7 @@ exprn(O,N1) --> prefix(Op, N),!, { N =< N1 }, exprn(R,N), !, build_(Op,R,Z), fol
 
 % postfix operators can follow an expression head, and can be followed
 follow(L,O,N1) --> (postfix(Op,N) -> {N =< N1}), !, build_(Op,L,Z), follow(Z, O, N1).
+follow(L,O,N1) --> postfix_expr(Op,I,N) -> {N =< N1}, !, build_(Op,L,I,Z), follow(Z, O, N1).
 
 % infix expressions capture another expression to the right and can be followed.
 follow(L,O,N1) --> ws0, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws0, exprn(R,N),!, build_(Op,L,R,Z), follow(Z, O, N1).
@@ -183,6 +184,10 @@ follow(O,O,_) --> !.
 % lazy infix expressions can optionally capture another expression to the right and can be followed.
 follow_lazy_infix(L,Op,N,Z) --> ws0, exprn(R,N),!, build_(Op,L,R,Z).
 follow_lazy_infix(L,Op,_,Z) --> build_(Op,L,Z).
+
+:- discontiguous postfix_expr/7.
+
+postfix_expr(_,_,_,_) --> {fail}.
 
 % right associative operators bind a + (b + c) 
 assoc(right, A, B) :-  A =< B.
@@ -228,11 +233,11 @@ eval(E,Eo,call(H,T),O) :-  \+ var(H), !,eval_call(E,Eo,H,T,O).
 
 % this is seperate to allow overloading
 :- discontiguous eval_call/5, index(eval_call(0,0,1,0,0)).
-eval_call(E,Eo,H,T,O) :- builtin(H),!, eval(E,Eo,T,To), !, apply(H,To,O).
+eval_call(E,Eo,H,T,O) :- builtin(H),!, eval_list(E,Eo,T,To), !, apply(H,To,O).
 
 % evaluating a list
-eval(E,Eo,[H|T],[Ho|To]) :- !, eval(E,E1,H,Ho),!, eval(E1,Eo,T,To).
-eval(E,E,[],[]) :- !.
+eval_list(E,Eo,[H|T],[Ho|To]) :- !, eval(E,E1,H,Ho),!, eval_list(E1,Eo,T,To).
+eval_list(E,E,[],[]) :- !.
 
 %% use builtin/1 to indicate a builtin operator
 %% and use apply(name,[args],output) to implement it.
@@ -240,6 +245,12 @@ eval(E,E,[],[]) :- !.
 
 
 %% language skeleton
+
+comment --> "#", comment_tail.
+
+comment_tail --> newline,!.
+comment_tail --> [_], comment_tail,!.
+comment_tail --> [].
 
 %% language defintion of numbers with addition
 
@@ -286,6 +297,7 @@ builtin(lt). apply(lt,[X,Y],Y) :-  X < Y,!.
 builtin(le). apply(le,[X,Y],Y) :-  X =< Y,!.
 builtin(gt). apply(gt,[X,Y],Y) :-  X > Y,!.
 builtin(ge). apply(ge,[X,Y],Y) :-  X >= Y,!.
+builtin(eq). apply(eq,[X,Y],Y) :-  X == Y,!.
 builtin(number). apply(number,[X],Y) :-  cast_to_number(X,Y),!.
 
 test(numbers, O) :- (
@@ -295,6 +307,7 @@ test(numbers, O) :- (
     parse("(1 + 2) + 3",X),
     parse("1 + 2 + 3",X),
     expect("1 < 2 < 3", 3), 
+    expect("(1 + 2) == (5 -2)", 3), 
     [])-> O = pass; O = fail.
 
 %% next, identifiers allow us to inroduce builtin values/operators:
@@ -312,14 +325,34 @@ global_identifier(A) --> "$", !, csym(C),csyms(N), {string_to_list(A,[C|N])},!.
 exprn(O,N) --> local_identifier(X), !, idbuild(X,O1), !, follow(O1,O,N). 
 exprn(O,N) --> global_identifier(X), !, follow(global(X),O,N). 
 
-idbuild(X,O) --> nofix(X,O),!.
+idbuild(X,O) --> {nofix(X,O)},!.
 idbuild(X,id(X)) --> !.
 
 % nofix operators take no arguments.
 % useful for special builtin values.
 
-:- discontiguous nofix/4.
-nofix(fail,fail).
+:- discontiguous nofix/2.
+nofix(F,fail) :- string_to_atom(F,fail),!.
+
+%% strings
+
+string(A) --> "\"", chars(S), {string_to_list(A,S)},!.
+chars([]) --> "\"".
+chars(O) --> "\\",!, escapes(O). 
+chars([H|T]) --> [H], chars(T).
+
+escapes(O) --> "\"", {append("\"",T,O)},chars(T).
+escapes(O) --> "n", {append("\n",T,O)},chars(T).
+escapes(O) --> "t", {append("\t",T,O)},chars(T).
+escapes(O) --> newline, chars(O).
+
+item(string(I)) --> string(I).
+eval(E,E,string(X), string(X)).
+
+
+% debugging
+nofix(T,call(trace,[])) :- string_to_atom(T,trace),!.
+eval_call(E,E,trace,_,nil) :- trace,!.
 
 %% flow control operators.
 
@@ -385,36 +418,58 @@ item(O) --> "[", ws0, expr(I), ws0, "]", build_(make_table, I,O).
 build(make_table, tuple(L), call(make_table,L)).
 build(make_table, L, call(make_table,[L])).
 
-eval_call(E,Eo,make_table,C,T) :- empty_table(T), add_table(E,Eo,C,T).
-eval(E,Eo,tuple(T),tuple(To)) :- eval(E,Eo,T,To),!.
+% fixme - support key value pairs in tables
+eval_call(E,Eo,make_table,[tuple(L,P)],table(Lo,Po)) :- eval_list(E,E1,L,Lo),!, eval_pairs(E1,Eo,P,Po).
 
+eval(E,E,tuple(T,P),tuple(T,P)).
+eval(E,E,table(T,P),table(T,P)).
+
+eval_pairs(E,E,[],[]) :- !.
+eval_pairs(E,Eo,[K-V|T],[K-Vo|To]) :- eval(E,E1,V,Vo),!, eval_pairs(E1,Eo, T,To),!.
+
+% key value pairs
 infix_(strkeyvalue, right, 20) --> "=>".
 build(strkeyvalue,id(X),O,keyvalue(string(X),O)).
-
-eval(E,Eo,keyvalue(K,V), keyvalue(K,Vo)) :- eval(E,Eo,V,Vo),!.
-eval(E,E,string(X), string(X)).
-
 infix(keyvalue, right, 20) --> ":".
 build(keyvalue,X,O,keyvalue(X,O)).
 
+% list seperator
 lazyinfix(pair, left, 70) --> ",".
-build(pair,A,B,O) :- B=tuple(L) -> O=tuple([A|L]); O=tuple([A,B]).
-build(pair,A,tuple([A])).
 
+% tuple constuction
+build(pair,keyvalue(K,V),keyvalue(K1,V1),O) :- O=tuple([],[K-V,K1-V1]).
+build(pair,B,keyvalue(K,V),O) :- O=tuple([B],[K-V]).
+build(pair,keyvalue(K,V),B,O) :- B=tuple(L,P) -> O=tuple(L,[K-V|P]); O=tuple([B],[K-V]).
+build(pair,A,B,O) :- B=tuple(L,P) -> O=tuple([A|L],P); O=tuple([A,B],[]).
+build(pair,keyvalue(K,V),tuple([],[K-V])).
+build(pair,A,tuple([A],[])).
 
+empty_table(table([],[])).
 
-add_table(E,E,[],_) :-!.
-add_table(E,Eo,[H|T], Table) :- eval(E,E1,H,Ho),!, table_append(Table,Ho), add_table(E1,Eo,T,Table),!.
+table_append(T,K-V) :- T = table(_,P),nb_setarg(1,T,[K-V|P]),!. 
+table_append(T,I) :- T = table(L,_), append(L,[I],L1), nb_setarg(1,T,L1),!. 
 
-empty_table(t([],[])).
+index(table(L,_),K,O) :- number(K), nth0(K,L,O),!.
+index(tuple(L,_),K,O) :- number(K), nth0(K,L,O),!.
 
-table_append(T,I) :- T = t(L,_), append(L,[I],L1), nb_setarg(1,T,L1),!. 
+postfix_expr(index,I,5) --> "[", ws0, expr(I), ws0, "]",!.
 
-eval_call(E,E,assign,[tuple([]),tuple([])],[]) :-!.
-eval_call(E,Eo,assign,[tuple([A|At]),tuple([B|Bt])],[Oh|Ot]) :-
+eval_call(E,Eo,index,[T,K],O) :-
+    eval(E,E1,T,T1),!,
+    eval(E1,Eo,K,K1),!,
+    index(T1,K1,O).
+
+eval_call(E,E,assign,[tuple([],[]),tuple([],[])],[]) :-!.
+eval_call(E,Eo,assign,[tuple([A|At],[]),tuple([B|Bt],[])],[Oh|Ot]) :-
     !,
     eval_call(E,E1,assign,[A,B],Oh),!,
-    eval_call(E1,Eo, assign,[tuple(At),tuple(Bt)], Ot).
+    eval_call(E1,Eo, assign,[tuple(At,[]),tuple(Bt,[])], Ot).
+
+test(collections, O) :- (
+    expect("x = 1,2,3 and x[0] == 1",1),
+    []) -> O = pass; O = fail.
+
+
 
 
 %% dev log
@@ -423,15 +478,18 @@ eval_call(E,Eo,assign,[tuple([A|At]),tuple([B|Bt])],[Oh|Ot]) :-
 % done, handle backtracking assignment properly
 % done, remove backtracking - use return or fail as expressions
 % done, adding $foo identifiers 
+% done, string literals
+% done, tuple and table syntax, keyvalue operators and lazy to seperate/terminate lists.
+% done, tuple assignment over lists
 
 % todo, improve test coverage, measure test coverage, profile, etc.
 
+% todo, tuple assignment over key-values, indexing key-values
+% todo, iterative interface ? one for reading one for writing?
+% todo, index assignment
+
 % needs doing
 % todo, collections a :b,a =>b, tuples , 
-% todo, iteration interface
-% todo, strings, literals
-% todo, tuple assignment
-% todo, indexing a[0]
 % todo, if case and other flow control
 % todo, infix for at high operator precedence, i.e 110 or summat.
 
