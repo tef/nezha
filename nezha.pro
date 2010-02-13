@@ -414,19 +414,6 @@ test(variables, O) :- (
 
 % collections
 
-item(O) --> "[", ws0, expr(I), ws0, "]", build_(make_table, I,O).
-build(make_table, tuple(L), call(make_table,L)).
-build(make_table, L, call(make_table,[L])).
-
-% fixme - support key value pairs in tables
-eval_call(E,Eo,make_table,[tuple(L,P)],table(Lo,Po)) :- eval_list(E,E1,L,Lo),!, eval_pairs(E1,Eo,P,Po).
-
-eval(E,E,tuple(T,P),tuple(T,P)).
-eval(E,E,table(T,P),table(T,P)).
-
-eval_pairs(E,E,[],[]) :- !.
-eval_pairs(E,Eo,[K-V|T],[K-Vo|To]) :- eval(E,E1,V,Vo),!, eval_pairs(E1,Eo, T,To),!.
-
 % key value pairs
 infix_(strkeyvalue, right, 20) --> "=>".
 build(strkeyvalue,id(X),O,keyvalue(string(X),O)).
@@ -444,20 +431,41 @@ build(pair,A,B,O) :- B=tuple(L,P) -> O=tuple([A|L],P); O=tuple([A,B],[]).
 build(pair,keyvalue(K,V),tuple([],[K-V])).
 build(pair,A,tuple([A],[])).
 
+eval(E,E,tuple(T,P),tuple(T,P)).
+
+% table construction
 empty_table(table([],[])).
+eval(E,E,table(T,P),table(T,P)).
+
+item(O) --> "[", ws0, expr(I), ws0, "]", build_(table, I,O).
+
+build(table, tuple(L), call(table,L)).
+build(table, L, call(table,[L])).
+
+eval_call(E,Eo,make_table,[tuple(L,P)],table(Lo,Po)) :- eval_list(E,E1,L,Lo),!, eval_pairs(E1,Eo,P,Po).
+
+eval_pairs(E,E,[],[]) :- !.
+eval_pairs(E,Eo,[K-V|T],[K-Vo|To]) :- eval(E,E1,V,Vo),!, eval_pairs(E1,Eo, T,To),!.
 
 table_append(T,K-V) :- T = table(_,P),nb_setarg(1,T,[K-V|P]),!. 
 table_append(T,I) :- T = table(L,_), append(L,[I],L1), nb_setarg(1,T,L1),!. 
 
-index(table(L,_),K,O) :- number(K), nth0(K,L,O),!.
-index(tuple(L,_),K,O) :- number(K), nth0(K,L,O),!.
-
+% index operator
 postfix_expr(index,I,5) --> "[", ws0, expr(I), ws0, "]",!.
+
+index(table(L,_),K,O) :- number(K), nth0(K,L,O),!.
+index(table(_,P),K,O) :- memberchk(K-O,P).
+index(tuple(L,_),K,O) :- number(K), nth0(K,L,O),!.
+index(tuple(_,P),K,O) :- memberchk(K-O,P).
+
 
 eval_call(E,Eo,index,[T,K],O) :-
     eval(E,E1,T,T1),!,
     eval(E1,Eo,K,K1),!,
     index(T1,K1,O).
+
+
+% fixme, start writing index_assign ?
 
 eval_call(E,E,assign,[tuple([],[]),tuple([],[])],[]) :-!.
 eval_call(E,Eo,assign,[tuple([A|At],[]),tuple([B|Bt],[])],[Oh|Ot]) :-
