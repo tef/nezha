@@ -174,8 +174,15 @@ follow(L,O,N1) --> (postfix(Op,N) -> {N =< N1}), !, build_(Op,L,Z), follow(Z, O,
 % infix expressions capture another expression to the right and can be followed.
 follow(L,O,N1) --> ws0, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws0, exprn(R,N),!, build_(Op,L,R,Z), follow(Z, O, N1).
 
+% postfix operators can follow an expression head, and can be followed
+follow(L,O,N1) --> ws0, (lazyinfix(Op,_,N) -> {N =< N1}), !,  follow_lazy_infix(L,Op,N,Z), follow(Z,O,N1).
+
 % the expression might not have anything following it.
 follow(O,O,_) --> !.
+
+% lazy infix expressions can optionally capture another expression to the right and can be followed.
+follow_lazy_infix(L,Op,N,Z) --> ws0, exprn(R,N),!, build_(Op,L,R,Z).
+follow_lazy_infix(L,Op,_,Z) --> build_(Op,L,Z).
 
 % right associative operators bind a + (b + c) 
 assoc(right, A, B) :-  A =< B.
@@ -292,13 +299,13 @@ test(numbers, O) :- (
 
 %% next, identifiers allow us to inroduce builtin values/operators:
 
-local_identifier(A) -->  csym(C),csyms(N), {string_to_atom([C|N],A)},!. 
+local_identifier(A) -->  csym(C),csyms(N), {string_to_list(A,[C|N])},!. 
 csyms([H|T]) --> csym_(H), csyms(T).
 csyms([]) --> [].
 csym(C) --> [C], {code_type(C, csymf)}.
 csym_(C) --> [C], {code_type(C, csym)}.
 
-global_identifier(A) --> "$", !, csym(C),csyms(N), {string_to_atom([C|N],A)},!. 
+global_identifier(A) --> "$", !, csym(C),csyms(N), {string_to_list(A,[C|N])},!. 
 
 % identifiers are matched after operators
 % fixme? use same matching.
@@ -374,17 +381,40 @@ test(variables, O) :- (
 
 % collections
 
-item(collection([I|T])) --> "[", ws0, expr(I), collection_tail(T), ws0, "]".
+item(O) --> "[", ws0, expr(I), ws0, "]", build_(make_table, I,O).
+build(make_table, tuple(L), call(make_table,L)).
+build(make_table, L, call(make_table,[L])).
 
-collection_tail([I|O]) -->  ws0,",", ws0, expr(I), collection_tail(O).
-collection_tail([]) --> ws0 , ",".
-collection_tail([]) --> [].
+eval_call(E,Eo,make_table,C,T) :- empty_table(T), add_table(E,Eo,C,T).
+eval(E,Eo,tuple(T),tuple(To)) :- eval(E,Eo,T,To),!.
 
-infix_(strpair, right, 20) --> "=>".
-infix(pair, right, 20) --> ":".
+infix_(strkeyvalue, right, 20) --> "=>".
+build(strkeyvalue,id(X),O,keyvalue(string(X),O)).
 
-build(pair,X,O,pair(X,O)).
-build(strpair,id(X),O,pair(literal(X),O)).
+eval(E,Eo,keyvalue(K,V), keyvalue(K,Vo)) :- eval(E,Eo,V,Vo),!.
+eval(E,E,string(X), string(X)).
+
+infix(keyvalue, right, 20) --> ":".
+build(keyvalue,X,O,keyvalue(X,O)).
+
+lazyinfix(pair, left, 70) --> ",".
+build(pair,A,B,O) :- B=tuple(L) -> O=tuple([A|L]); O=tuple([A,B]).
+build(pair,A,tuple([A])).
+
+
+
+add_table(E,E,[],_) :-!.
+add_table(E,Eo,[H|T], Table) :- eval(E,E1,H,Ho),!, table_append(Table,Ho), add_table(E1,Eo,T,Table),!.
+
+empty_table(t([],[])).
+
+table_append(T,I) :- T = t(L,_), append(L,[I],L1), nb_setarg(1,T,L1),!. 
+
+eval_call(E,E,assign,[tuple([]),tuple([])],[]) :-!.
+eval_call(E,Eo,assign,[tuple([A|At]),tuple([B|Bt])],[Oh|Ot]) :-
+    !,
+    eval_call(E,E1,assign,[A,B],Oh),!,
+    eval_call(E1,Eo, assign,[tuple(At),tuple(Bt)], Ot).
 
 
 %% dev log
@@ -403,6 +433,7 @@ build(strpair,id(X),O,pair(literal(X),O)).
 % todo, tuple assignment
 % todo, indexing a[0]
 % todo, if case and other flow control
+% todo, infix for at high operator precedence, i.e 110 or summat.
 
 % needs thinking
 % todo lexical scope via stack
@@ -431,7 +462,7 @@ build(strpair,id(X),O,pair(literal(X),O)).
 % todo, modules
 % todo, signals
 % todo, datetime handling, calendars, timezones
-
+% toto, prelude
 % todo, pipes
 % todo, join like operator on select (see jerlang)
 % todo, queries
@@ -439,6 +470,11 @@ build(strpair,id(X),O,pair(literal(X),O)).
 % todo, urls, file://
 % todo, http access, sockets
 % todo, file operations, pipe operations
+
+% milestones:
+%    some built ins written in nezha
+%    bytecode format
+%    vm? pypy heh
 
 
 % future
