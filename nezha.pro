@@ -172,11 +172,11 @@ exprn(O,N1) --> prefix(Op, N),!, { N =< N1 }, exprn(R,N), !, build_(Op,R,Z), fol
 follow(L,O,N1) --> (postfix(Op,N) -> {N =< N1}), !, build_(Op,L,Z), follow(Z, O, N1).
 follow(L,O,N1) --> postfix_expr(Op,I,N) -> {N =< N1}, !, build_(Op,L,I,Z), follow(Z, O, N1).
 
+% lazy infix operators can follow an expression head, and can be followed
+follow(L,O,N1) --> ws0, (lazyinfix(Op,_,N) -> {N =< N1}), !,  follow_lazy_infix(L,Op,N,Z), follow(Z,O,N1).
+
 % infix expressions capture another expression to the right and can be followed.
 follow(L,O,N1) --> ws0, (infix(Op,As,N) -> {assoc(As,N, N1)}), !,ws0, exprn(R,N),!, build_(Op,L,R,Z), follow(Z, O, N1).
-
-% postfix operators can follow an expression head, and can be followed
-follow(L,O,N1) --> ws0, (lazyinfix(Op,_,N) -> {N =< N1}), !,  follow_lazy_infix(L,Op,N,Z), follow(Z,O,N1).
 
 % the expression might not have anything following it.
 follow(O,O,_) --> !.
@@ -198,7 +198,7 @@ assoc(left, A, B) :- A < B.
 
 :- discontiguous build/3, build/4.
 build_(C,R,O) --> {build(C,R,O)}.
-build_(C,R,call(C,R)) --> !.
+build_(C,R,call(C,[R])) --> !.
 build(_,_,_) --> {fail}.
 
 build_(C,L,R,O) --> {build(C,L,R,O)}.
@@ -251,6 +251,9 @@ comment --> "#", comment_tail.
 comment_tail --> newline,!.
 comment_tail --> [_], comment_tail,!.
 comment_tail --> [].
+
+:- discontiguous reserved/1.
+
 
 %% language defintion of numbers with addition
 
@@ -325,6 +328,7 @@ global_identifier(A) --> "$", !, csym(C),csyms(N), {string_to_list(A,[C|N])},!.
 exprn(O,N) --> local_identifier(X), !, idbuild(X,O1), !, follow(O1,O,N). 
 exprn(O,N) --> global_identifier(X), !, follow(global(X),O,N). 
 
+idbuild(X,_) --> {reserved(X),!, fail}.
 idbuild(X,O) --> {nofix(X,O)},!.
 idbuild(X,id(X)) --> !.
 
@@ -359,14 +363,17 @@ eval_call(E,E,trace,_,nil) :- trace,!.
 % A and B     do A, then do B. 
 infix(and,right,96) --> "and".
 eval_call(E,Eo,and,[X,Y],Z) :-!, eval(E,E1,X,_),!,eval(E1,Eo,Y,Z).
+reserved(And) :- string_to_list(And,"and").
 
 % A or B      do A but if A  fails do B.
 infix(or,right,98) --> "or".
 eval_call(E,Eo,or,[X,Y],Z) :- !,((eval(E,Eo,X,Z) *-> true);eval(E,Eo,Y,Z)).
+reserved(Or) :- string_to_list(Or,"or").
 
 % not A       see if A fails.
 prefix(not,94) --> "not",ws0.
-eval_call(E,E,not,X,[]) :- \+ eval(E,_,X,_), !.
+eval_call(E,E,not,[X],[]) :- \+ eval(E,_,X,_), !.
+reserved(Not) :- string_to_list(Not,"not").
 
 test(controlflow, O) :- (
     expect("1 or 2",1),
@@ -379,15 +386,24 @@ test(controlflow, O) :- (
 
 infix(assign,right,80) --> "=". 
 
-eval_call(E,Eo,assign,[id(T),I],O) :-
+eval_call(E,Eo,assign,[id(T),I],O1) :-
     !,
     eval(E,E1,I,O),
-    env_set_var(E1,Eo,T,O).
+    !,
+    do_assign(E1,Eo,id(T),O,O1).
 
-eval_call(E,Eo,assign,[global(T),I],O) :-
+:- discontiguous do_assign/5.
+
+do_assign(E,Eo,id(T),O,O) :-
+    env_set_var(E,Eo,T,O).
+
+eval_call(E,Eo,assign,[global(T),I],O1) :-
     !,
     eval(E,E1,I,O),
-    env_set_global_var(E1,Eo,T,O).
+    do_assign(E1,Eo,global(T),O,O1).
+
+do_assign(E,Eo,global(T),O,O) :-
+    env_set_global_var(E,Eo,T,O).
 
 eval(E,E,id(X),O) :-  env_get_var(E,X,O),!.
 eval(E,E,global(X),O) :-  env_get_global_var(E,X,O),!.
@@ -406,6 +422,7 @@ env_get_global_var(e(E,_), N, O) :-
 
 test(variables, O) :- (
     expect("x = 1 and x",1),
+    expect("x = -1 and x",-1),
     expect("x = 1 and y = x and y",1),
     expect("x = 1 and x = x + 1",2),
     expect("$x = 1 and x = $x + 1",2),
@@ -442,7 +459,7 @@ item(O) --> "[", ws0, expr(I), ws0, "]", build_(table, I,O).
 build(table, tuple(L), call(table,L)).
 build(table, L, call(table,[L])).
 
-eval_call(E,Eo,make_table,[tuple(L,P)],table(Lo,Po)) :- eval_list(E,E1,L,Lo),!, eval_pairs(E1,Eo,P,Po).
+eval_call(E,Eo,table,[tuple(L,P)],table(Lo,Po)) :- eval_list(E,E1,L,Lo),!, eval_pairs(E1,Eo,P,Po).
 
 eval_pairs(E,E,[],[]) :- !.
 eval_pairs(E,Eo,[K-V|T],[K-Vo|To]) :- eval(E,E1,V,Vo),!, eval_pairs(E1,Eo, T,To),!.
@@ -467,14 +484,50 @@ eval_call(E,Eo,index,[T,K],O) :-
 
 % fixme, start writing index_assign ?
 
-eval_call(E,E,assign,[tuple([],[]),tuple([],[])],[]) :-!.
-eval_call(E,Eo,assign,[tuple([A|At],[]),tuple([B|Bt],[])],[Oh|Ot]) :-
+eval_call(E,Eo,assign,[tuple(L,P),Lexp],O1) :- 
     !,
-    eval_call(E,E1,assign,[A,B],Oh),!,
-    eval_call(E1,Eo, assign,[tuple(At,[]),tuple(Bt,[])], Ot).
+    eval(E,E1,Lexp,O),
+    !,
+    do_assign(E1,Eo,tuple(L,P),O,O1).
+
+
+do_assign(E,Eo, tuple(L,P),O, tuple([A|T],P1)) :- 
+    get_list_iterable(O,R,Rt),
+    !,get_list_iterable(tuple(L,P),H,Lt), 
+    !,
+    do_assign(E,E1,H,R,A),!,
+    do_assign(E1,Eo,Lt,Rt, tuple(T,P1)).
+
+do_assign(E,Eo, tuple(L,P),O, tuple(L,[K1-A|T])) :- 
+    get_pair_iterable(tuple(L,P),keyvalue(K,V),Lt), 
+    eval(E,E1,K,K1),
+    get_pair_iterable(O,keyvalue(K1,V1),Rt),
+    !,
+    do_assign(E1,E2,V,V1,A),!,
+    do_assign(E2,Eo,Lt,Rt, tuple(L,T)).
+
+do_assign(E,E, tuple([],[]), A, tuple([],[])) :- empty_iterable(A).
+
+:- discontiguous get_iterable/3, empty_iterable/1.
+
+empty_iterable(tuple([],[])).
+empty_iterable(table([],[])).
+
+get_list_iterable(tuple([H|T],P), H, tuple(T,P)).
+get_list_iterable(table([H|T],P), H, table(T,P)).
+get_pair_iterable(tuple([],P), keyvalue(K,V), tuple([],Pt)) :- select(K-V,P,Pt).
+get_pair_iterable(table([],P), keyvalue(K,V), table([],Pt)) :- select(K-V,P,Pt).
 
 test(collections, O) :- (
+    expect("x,y,z = 1,2,3 and x == 1",1),
+    expect("x,y,z = 1,2,3, and x == 1",1),
+    expect("x,y,z, = 1,2,3, and x == 1",1),
+    expect("x = 1,2,3, and x[1] == 2",2),
+    expect("x,y = [1,2] and y == 2",2),
     expect("x = 1,2,3 and x[0] == 1",1),
+    expect("x = a=>1,b=>2,c=>3 and x[\"a\"] == 1",1),
+    expect("x = a=>1,b=>2,c=>3 and x[\"a\"] == 1",1),
+    expect("z = \"a\" and  z:x,b=>y = b=>1,a=>2, and y",1),
     []) -> O = pass; O = fail.
 
 
