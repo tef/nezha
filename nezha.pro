@@ -459,7 +459,13 @@ item(O) --> "[", ws0, expr(I), ws0, "]", build_(table, I,O).
 build(table, tuple(L), call(table,L)).
 build(table, L, call(table,[L])).
 
-eval_call(E,Eo,table,[tuple(L,P)],table(Lo,Po)) :- eval_list(E,E1,L,Lo),!, eval_pairs(E1,Eo,P,Po).
+eval_call(E,Eo,table,[tuple(L,P)],T) :- eval_list(E,E1,L,Lo),!, eval_pairs(E1,Eo,P,Po), !, make_table(T,Lo,Po).
+
+make_table(table([],[]),[],[]).
+make_table(table([var(Hl)|A],[var(Hp)|B]),[Hl|L],[Hp|P]) :- make_table(table(A,B),L,P).
+make_table(table([var(Hl)|A],B),[Hl|L],[]) :- make_table(table(A,B),L,[]).
+make_table(table(A,[var(Hp)|B]),[],[Hp|P]) :- make_table(table(A,B),[],P).
+
 
 eval_pairs(E,E,[],[]) :- !.
 eval_pairs(E,Eo,[K-V|T],[K-Vo|To]) :- eval(E,E1,V,Vo),!, eval_pairs(E1,Eo, T,To),!.
@@ -470,8 +476,8 @@ table_append(T,I) :- T = table(L,_), append(L,[I],L1), nb_setarg(1,T,L1),!.
 % index operator
 postfix_expr(index,I,5) --> "[", ws0, expr(I), ws0, "]",!.
 
-index(table(L,_),K,O) :- number(K), nth0(K,L,O),!.
-index(table(_,P),K,O) :- memberchk(K-O,P).
+index(table(L,_),K,O) :- number(K), nth0(K,L,var(O)),!.
+index(table(_,P),K,O) :- memberchk(var(K-O),P).
 index(tuple(L,_),K,O) :- number(K), nth0(K,L,O),!.
 index(tuple(_,P),K,O) :- memberchk(K-O,P).
 
@@ -483,6 +489,15 @@ eval_call(E,Eo,index,[T,K],O) :-
 
 
 % fixme, start writing index_assign ?
+eval_call(E,Eo, assign,[call(index,A),R], R1) :-
+    eval(E,E1,A,[I,V]), !,
+    eval(E1,E2,R,R1) , !,
+    index_assign(E2,Eo,I,V,R1).
+
+%index_assign(_,_,I,_,_) :- number(I), !, fail. 
+%index_assign(E,Eo,K,T,V) :- select 
+
+% fixme - introduce settable arguments?or just cheap append/pop
 
 eval_call(E,Eo,assign,[tuple(L,P),Lexp],O1) :- 
     !,
@@ -514,9 +529,9 @@ empty_iterable(tuple([],[])).
 empty_iterable(table([],[])).
 
 get_list_iterable(tuple([H|T],P), H, tuple(T,P)).
-get_list_iterable(table([H|T],P), H, table(T,P)).
+get_list_iterable(table([var(H)|T],P), H, table(T,P)).
 get_pair_iterable(tuple([],P), keyvalue(K,V), tuple([],Pt)) :- select(K-V,P,Pt).
-get_pair_iterable(table([],P), keyvalue(K,V), table([],Pt)) :- select(K-V,P,Pt).
+get_pair_iterable(table([],P), keyvalue(K,V), table([],Pt)) :- select(var(K-V),P,Pt).
 
 test(collections, O) :- (
     expect("x,y,z = 1,2,3 and x == 1",1),
@@ -542,12 +557,13 @@ test(collections, O) :- (
 % done, string literals
 % done, tuple and table syntax, keyvalue operators and lazy to seperate/terminate lists.
 % done, tuple assignment over lists
+% done, tuple assignment over key-values, 
+% done, indexing key-values
 
 % todo, improve test coverage, measure test coverage, profile, etc.
 
-% todo, tuple assignment over key-values, indexing key-values
 % todo, iterative interface ? one for reading one for writing?
-% todo, index assignment
+% todo, index assignment for tables.
 
 % needs doing
 % todo, collections a :b,a =>b, tuples , 
@@ -599,7 +615,8 @@ test(collections, O) :- (
 % future
 % maybe, output language: scheme, prolog, etc
 % maybe, optional types (mutated from go) - interfaces and duck type inference
-% todo,  'use' and 'feature' to define new langauge features.
+% todo,  'use' and 'feature' to define new langauge features. essentially
+%        a meta system to extend the language,
 % maybe, language toolkit as library, using features.
 % maybe, self hosting
 
@@ -695,5 +712,5 @@ test_out([[N,O]|T]) :- writef('%w %w\n',[O,N]), test_out(T).
 % Use of Prolog for developing a new programming language
 % The Implementation of Lua 5.0
 % A Nanopass Framework for Compiler Education
-%
+% xoc, ddc aomop
 %
