@@ -395,7 +395,7 @@ eval_call(E,Eo,assign,[id(T),I],O1) :-
 :- discontiguous do_assign/5.
 
 do_assign(E,Eo,id(T),O,O) :-
-    env_set_var(E,Eo,T,O).
+    env_set_var(E,Eo,T,O),!.
 
 eval_call(E,Eo,assign,[global(T),I],O1) :-
     !,
@@ -403,7 +403,7 @@ eval_call(E,Eo,assign,[global(T),I],O1) :-
     do_assign(E1,Eo,global(T),O,O1).
 
 do_assign(E,Eo,global(T),O,O) :-
-    env_set_global_var(E,Eo,T,O).
+    env_set_global_var(E,Eo,T,O),!.
 
 eval(E,E,id(X),O) :-  env_get_var(E,X,O),!.
 eval(E,E,global(X),O) :-  env_get_global_var(E,X,O),!.
@@ -455,11 +455,14 @@ empty_table(table([],[])).
 eval(E,E,table(T,P),table(T,P)).
 
 item(O) --> "[", ws0, expr(I), ws0, "]", build_(table, I,O).
+item(O) --> "[", ws0, "]", build_(table, [],O).
 
 build(table, tuple(L), call(table,L)).
+build(table, [], call(table,[])).
 build(table, L, call(table,[L])).
 
 eval_call(E,Eo,table,[tuple(L,P)],T) :- eval_list(E,E1,L,Lo),!, eval_pairs(E1,Eo,P,Po), !, make_table(T,Lo,Po).
+eval_call(E,E,table,[],table([],[])) :-!.
 
 make_table(table([],[]),[],[]).
 make_table(table([var(Hl)|A],[var(Hp)|B]),[Hl|L],[Hp|P]) :- make_table(table(A,B),L,P).
@@ -547,6 +550,7 @@ empty_iterable(table([],[])).
 
 get_index_var(table(L,_), I,V) :- number(I), nth0(I,L,V),!.
 get_index_var(table(_,P), K, var(K-V)) :- select(var(K-V),P,_),!.
+get_index_var(T, K, O) :- T=table(_,P), O = var(K-_), nb_setarg(2,T,[O|P]),!.
 
 get_list_iterable(tuple([H|T],P), H, tuple(T,P)).
 get_list_iterable(table([var(H)|T],P), H, table(T,P)).
@@ -564,6 +568,7 @@ test(collections, O) :- (
     expect("x = a=>1,b=>2,c=>3 and x[\"a\"] == 1",1),
     expect("z = \"a\" and  z:x,b=>y = b=>1,a=>2, and y",1),
     expect("x = [1,2] and x[0]=2 and x[0]",2),
+    expect("x = [] and x[\"a\"] = 1 and x[\"a\"]",1),
     []) -> O = pass; O = fail.
 
 
