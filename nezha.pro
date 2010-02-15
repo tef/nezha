@@ -505,6 +505,23 @@ eval_call(E,Eo,assign,[tuple(L,P),Lexp],O1) :-
     !,
     do_assign(E1,Eo,tuple(L,P),O,O1).
 
+eval_call(E,Eo,assign,[call(index,[T,I]),R], Rexp) :-
+    eval(E,E1,T,Texp),
+    eval(E1,E2,I,Iexp),
+    !,
+    get_index_var(Texp,Iexp,V),
+    eval(E2,Eo,R,Rexp),
+    !,
+    set_index_var(I,V,Rexp).
+
+set_index_var(I,V,Rexp) :-
+    V = var(I-_),!,
+    nb_setarg(1,V,I-Rexp),
+    !.
+
+set_index_var(_,V,Rexp) :-
+    nb_setarg(1,V,Rexp),
+    !.
 
 do_assign(E,Eo, tuple(L,P),O, tuple([A|T],P1)) :- 
     get_list_iterable(O,R,Rt),
@@ -528,6 +545,9 @@ do_assign(E,E, tuple([],[]), A, tuple([],[])) :- empty_iterable(A).
 empty_iterable(tuple([],[])).
 empty_iterable(table([],[])).
 
+get_index_var(table(L,_), I,V) :- number(I), nth0(I,L,V),!.
+get_index_var(table(_,P), K, var(K-V)) :- select(var(K-V),P,_),!.
+
 get_list_iterable(tuple([H|T],P), H, tuple(T,P)).
 get_list_iterable(table([var(H)|T],P), H, table(T,P)).
 get_pair_iterable(tuple([],P), keyvalue(K,V), tuple([],Pt)) :- select(K-V,P,Pt).
@@ -543,6 +563,7 @@ test(collections, O) :- (
     expect("x = a=>1,b=>2,c=>3 and x[\"a\"] == 1",1),
     expect("x = a=>1,b=>2,c=>3 and x[\"a\"] == 1",1),
     expect("z = \"a\" and  z:x,b=>y = b=>1,a=>2, and y",1),
+    expect("x = [1,2] and x[0]=2 and x[0]",2),
     []) -> O = pass; O = fail.
 
 
